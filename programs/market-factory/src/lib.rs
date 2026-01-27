@@ -1,13 +1,6 @@
-pub mod constants;
-pub mod error;
-pub mod instructions;
-pub mod state;
-
 use anchor_lang::prelude::*;
 
-pub use constants::*;
-pub use instructions::*;
-pub use state::*;
+pub mod state;
 
 declare_id!("AQR7DVzsy1dKM3TdRqLMbzAb5waubBJYdXd9BGuCtVpR");
 
@@ -15,7 +8,15 @@ declare_id!("AQR7DVzsy1dKM3TdRqLMbzAb5waubBJYdXd9BGuCtVpR");
 pub mod market_factory {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        initialize::handler(ctx)
+    pub fn create_market(
+        _ctx: Context<CreateMarket>,
+        _title: String,
+        _description: String,
+        _expiry_timestamp: i64,
+    ) -> Result<()> {
+        Ok(())
     }
 }
+
+#[derive(Accounts)]
+pub struct CreateMarket {}
