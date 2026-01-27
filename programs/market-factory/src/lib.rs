@@ -1,6 +1,10 @@
 use anchor_lang::prelude::*;
 
+pub mod error;
+pub mod instructions;
 pub mod state;
+
+use instructions::*;
 
 declare_id!("AQR7DVzsy1dKM3TdRqLMbzAb5waubBJYdXd9BGuCtVpR");
 
@@ -9,14 +13,11 @@ pub mod market_factory {
     use super::*;
 
     pub fn create_market(
-        _ctx: Context<CreateMarket>,
-        _title: String,
-        _description: String,
-        _expiry_timestamp: i64,
+        ctx: Context<CreateMarket>,
+        title: String,
+        description: String,
+        expiry_timestamp: i64,
     ) -> Result<()> {
-        Ok(())
+        instructions::create_market::create_market(ctx, title, description, expiry_timestamp)
     }
 }
-
-#[derive(Accounts)]
-pub struct CreateMarket {}
