@@ -1,14 +1,14 @@
-# Sol Vibe Implementation Plan
+# KarmaPi Implementation Plan
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Build a binary prediction market on Sonic SVM with pari-mutuel betting, supporting both price predictions (Pyth oracle) and general events (creator settlement).
+**Goal:** Build a binary prediction market on Sonic SVM with pari-mutuel betting for general events, settled by market creators.
 
 **Architecture:** Two Anchor programs (market-factory, settlement) with a Next.js frontend. Markets hold YES/NO token pools, users bet on sides, winners split the total pool proportionally.
 
-**Tech Stack:** Anchor (Rust), Next.js 14, Tailwind CSS, @solana/wallet-adapter, @coral-xyz/anchor, Pyth Network
+**Tech Stack:** Anchor (Rust), Next.js 14, Tailwind CSS, @solana/wallet-adapter, @coral-xyz/anchor
 
-**Reference:** See `docs/plans/2026-01-27-sol-vibe-design.md` for full design details.
+**Reference:** See `docs/plans/2026-01-27-karmapi-design.md` for full design details.
 
 ---
 
@@ -28,8 +28,8 @@
 
 Run:
 ```bash
-anchor init sol-vibe --template=multiple
-cd sol-vibe
+anchor init karmapi --template=multiple
+cd karmapi
 ```
 
 Note: If already in project directory, run:
@@ -48,7 +48,7 @@ anchor new settlement
 
 Run:
 ```bash
-mv programs/sol-vibe programs/market-factory
+mv programs/karmapi programs/market-factory
 ```
 
 Update `Anchor.toml`:
@@ -129,7 +129,7 @@ git commit -m "chore: initialize Anchor workspace with market-factory and settle
 [package]
 name = "market-factory"
 version = "0.1.0"
-description = "Sol Vibe Market Factory Program"
+description = "KarmaPi Market Factory Program"
 edition = "2021"
 
 [lib]
@@ -155,7 +155,7 @@ anchor-spl = "0.30.1"
 [package]
 name = "settlement"
 version = "0.1.0"
-description = "Sol Vibe Settlement Program"
+description = "KarmaPi Settlement Program"
 edition = "2021"
 
 [lib]
@@ -173,7 +173,6 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 [dependencies]
 anchor-lang = "0.30.1"
 anchor-spl = "0.30.1"
-pyth-solana-receiver-sdk = "0.8.0"
 ```
 
 **Step 3: Create state.rs with shared types**
@@ -186,7 +185,6 @@ use anchor_lang::prelude::*;
 #[derive(InitSpace)]
 pub struct Market {
     pub creator: Pubkey,
-    pub market_type: MarketType,
     #[max_len(128)]
     pub title: String,
     #[max_len(512)]
@@ -209,17 +207,7 @@ pub struct Market {
     pub status: MarketStatus,
     pub outcome: Option<bool>,
 
-    // Price market only
-    pub price_feed_id: Option<[u8; 32]>,
-    pub target_price: Option<i64>,
-
     pub bump: u8,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
-pub enum MarketType {
-    Price,
-    Event,
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
@@ -247,8 +235,8 @@ declare_id!("YOUR_PROGRAM_ID");
 pub mod market_factory {
     use super::*;
 
-    pub fn create_event_market(
-        _ctx: Context<CreateEventMarket>,
+    pub fn create_market(
+        _ctx: Context<CreateMarket>,
         _title: String,
         _description: String,
         _expiry_timestamp: i64,
@@ -258,7 +246,7 @@ pub mod market_factory {
 }
 
 #[derive(Accounts)]
-pub struct CreateEventMarket {}
+pub struct CreateMarket {}
 ```
 
 **Step 5: Build to verify**
@@ -281,11 +269,11 @@ git commit -m "chore: add shared types and dependencies"
 
 ## Phase 2: Market Factory Contract
 
-### Task 3: Implement create_event_market
+### Task 3: Implement create_market
 
 **Files:**
 - Create: `programs/market-factory/src/instructions/mod.rs`
-- Create: `programs/market-factory/src/instructions/create_event_market.rs`
+- Create: `programs/market-factory/src/instructions/create_market.rs`
 - Modify: `programs/market-factory/src/lib.rs`
 - Create: `tests/market-factory.ts`
 
@@ -305,8 +293,6 @@ import {
 import {
   TOKEN_PROGRAM_ID,
   createMint,
-  getOrCreateAssociatedTokenAccount,
-  mintTo,
 } from "@solana/spl-token";
 import { expect } from "chai";
 
@@ -339,8 +325,8 @@ describe("market-factory", () => {
     );
   });
 
-  describe("create_event_market", () => {
-    it("creates an event market with correct parameters", async () => {
+  describe("create_market", () => {
+    it("creates a market with correct parameters", async () => {
       const title = "Will Trump attack Iran before Jan 31?";
       const description = "Market resolves YES if military action occurs.";
       const expiryTimestamp = new anchor.BN(Math.floor(Date.now() / 1000) + 86400);
@@ -371,7 +357,7 @@ describe("market-factory", () => {
       );
 
       await program.methods
-        .createEventMarket(title, description, expiryTimestamp)
+        .createMarket(title, description, expiryTimestamp)
         .accounts({
           creator: creator.publicKey,
           market: marketPda,
@@ -391,7 +377,6 @@ describe("market-factory", () => {
       expect(market.creator.toString()).to.equal(creator.publicKey.toString());
       expect(market.title).to.equal(title);
       expect(market.description).to.equal(description);
-      expect(market.marketType).to.deep.equal({ event: {} });
       expect(market.status).to.deep.equal({ open: {} });
       expect(market.yesPool.toNumber()).to.equal(0);
       expect(market.noPool.toNumber()).to.equal(0);
@@ -413,23 +398,23 @@ Expected: FAIL - instruction not implemented
 
 Create `programs/market-factory/src/instructions/mod.rs`:
 ```rust
-pub mod create_event_market;
+pub mod create_market;
 
-pub use create_event_market::*;
+pub use create_market::*;
 ```
 
-**Step 4: Implement create_event_market instruction**
+**Step 4: Implement create_market instruction**
 
-Create `programs/market-factory/src/instructions/create_event_market.rs`:
+Create `programs/market-factory/src/instructions/create_market.rs`:
 ```rust
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
-use crate::state::{Market, MarketStatus, MarketType};
+use crate::state::{Market, MarketStatus};
 
 #[derive(Accounts)]
 #[instruction(title: String, description: String, expiry_timestamp: i64)]
-pub struct CreateEventMarket<'info> {
+pub struct CreateMarket<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
 
@@ -484,8 +469,8 @@ pub struct CreateEventMarket<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-pub fn create_event_market(
-    ctx: Context<CreateEventMarket>,
+pub fn create_market(
+    ctx: Context<CreateMarket>,
     title: String,
     description: String,
     expiry_timestamp: i64,
@@ -501,7 +486,6 @@ pub fn create_event_market(
     require!(description.len() <= 512, MarketError::DescriptionTooLong);
 
     market.creator = ctx.accounts.creator.key();
-    market.market_type = MarketType::Event;
     market.title = title;
     market.description = description;
     market.bet_token_mint = ctx.accounts.bet_token_mint.key();
@@ -513,8 +497,6 @@ pub fn create_event_market(
     market.expiry_timestamp = expiry_timestamp;
     market.status = MarketStatus::Open;
     market.outcome = None;
-    market.price_feed_id = None;
-    market.target_price = None;
     market.bump = ctx.bumps.market;
 
     Ok(())
@@ -548,13 +530,13 @@ declare_id!("YOUR_PROGRAM_ID");
 pub mod market_factory {
     use super::*;
 
-    pub fn create_event_market(
-        ctx: Context<CreateEventMarket>,
+    pub fn create_market(
+        ctx: Context<CreateMarket>,
         title: String,
         description: String,
         expiry_timestamp: i64,
     ) -> Result<()> {
-        instructions::create_event_market::create_event_market(ctx, title, description, expiry_timestamp)
+        instructions::create_market::create_market(ctx, title, description, expiry_timestamp)
     }
 }
 ```
@@ -572,265 +554,12 @@ Expected: PASS
 
 ```bash
 git add programs/market-factory/ tests/
-git commit -m "feat(market-factory): implement create_event_market instruction"
+git commit -m "feat(market-factory): implement create_market instruction"
 ```
 
 ---
 
-### Task 4: Implement create_price_market
-
-**Files:**
-- Create: `programs/market-factory/src/instructions/create_price_market.rs`
-- Modify: `programs/market-factory/src/instructions/mod.rs`
-- Modify: `programs/market-factory/src/lib.rs`
-- Modify: `tests/market-factory.ts`
-
-**Step 1: Write the failing test**
-
-Add to `tests/market-factory.ts`:
-```typescript
-describe("create_price_market", () => {
-  it("creates a price market with Pyth feed", async () => {
-    const targetPrice = new anchor.BN(150000_00000000); // $150,000 with 8 decimals
-    const expiryTimestamp = new anchor.BN(Math.floor(Date.now() / 1000) + 86400 * 7);
-
-    // BTC/USD Pyth feed ID (32 bytes)
-    const priceFeedId = Buffer.from(
-      "e62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
-      "hex"
-    );
-
-    const [marketPda] = PublicKey.findProgramAddressSync(
-      [
-        Buffer.from("market"),
-        creator.publicKey.toBuffer(),
-        betTokenMint.toBuffer(),
-        expiryTimestamp.toArrayLike(Buffer, "le", 8),
-      ],
-      program.programId
-    );
-
-    const [yesMint] = PublicKey.findProgramAddressSync(
-      [Buffer.from("yes_mint"), marketPda.toBuffer()],
-      program.programId
-    );
-
-    const [noMint] = PublicKey.findProgramAddressSync(
-      [Buffer.from("no_mint"), marketPda.toBuffer()],
-      program.programId
-    );
-
-    const [vault] = PublicKey.findProgramAddressSync(
-      [Buffer.from("vault"), marketPda.toBuffer()],
-      program.programId
-    );
-
-    await program.methods
-      .createPriceMarket(
-        Array.from(priceFeedId),
-        targetPrice,
-        expiryTimestamp
-      )
-      .accounts({
-        creator: creator.publicKey,
-        market: marketPda,
-        betTokenMint: betTokenMint,
-        yesMint: yesMint,
-        noMint: noMint,
-        vault: vault,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-        rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-      })
-      .signers([creator])
-      .rpc();
-
-    const market = await program.account.market.fetch(marketPda);
-
-    expect(market.marketType).to.deep.equal({ price: {} });
-    expect(market.priceFeedId).to.deep.equal(Array.from(priceFeedId));
-    expect(market.targetPrice.toNumber()).to.equal(targetPrice.toNumber());
-  });
-});
-```
-
-**Step 2: Run test to verify it fails**
-
-Run:
-```bash
-anchor test
-```
-
-Expected: FAIL
-
-**Step 3: Create create_price_market.rs**
-
-Create `programs/market-factory/src/instructions/create_price_market.rs`:
-```rust
-use anchor_lang::prelude::*;
-use anchor_spl::token::{Mint, Token, TokenAccount};
-
-use crate::state::{Market, MarketStatus, MarketType};
-use crate::instructions::create_event_market::MarketError;
-
-#[derive(Accounts)]
-#[instruction(price_feed_id: [u8; 32], target_price: i64, expiry_timestamp: i64)]
-pub struct CreatePriceMarket<'info> {
-    #[account(mut)]
-    pub creator: Signer<'info>,
-
-    #[account(
-        init,
-        payer = creator,
-        space = 8 + Market::INIT_SPACE,
-        seeds = [
-            Market::SEED_PREFIX,
-            creator.key().as_ref(),
-            bet_token_mint.key().as_ref(),
-            &expiry_timestamp.to_le_bytes(),
-        ],
-        bump,
-    )]
-    pub market: Account<'info, Market>,
-
-    pub bet_token_mint: Account<'info, Mint>,
-
-    #[account(
-        init,
-        payer = creator,
-        seeds = [b"yes_mint", market.key().as_ref()],
-        bump,
-        mint::decimals = bet_token_mint.decimals,
-        mint::authority = market,
-    )]
-    pub yes_mint: Account<'info, Mint>,
-
-    #[account(
-        init,
-        payer = creator,
-        seeds = [b"no_mint", market.key().as_ref()],
-        bump,
-        mint::decimals = bet_token_mint.decimals,
-        mint::authority = market,
-    )]
-    pub no_mint: Account<'info, Mint>,
-
-    #[account(
-        init,
-        payer = creator,
-        seeds = [b"vault", market.key().as_ref()],
-        bump,
-        token::mint = bet_token_mint,
-        token::authority = market,
-    )]
-    pub vault: Account<'info, TokenAccount>,
-
-    pub system_program: Program<'info, System>,
-    pub token_program: Program<'info, Token>,
-    pub rent: Sysvar<'info, Rent>,
-}
-
-pub fn create_price_market(
-    ctx: Context<CreatePriceMarket>,
-    price_feed_id: [u8; 32],
-    target_price: i64,
-    expiry_timestamp: i64,
-) -> Result<()> {
-    let market = &mut ctx.accounts.market;
-    let clock = Clock::get()?;
-
-    require!(
-        expiry_timestamp > clock.unix_timestamp,
-        MarketError::ExpiryInPast
-    );
-    require!(target_price > 0, MarketError::InvalidTargetPrice);
-
-    // Generate title from price
-    let title = format!("Price >= ${}", target_price / 100_000_000);
-    let description = "Price prediction market. Settles automatically via Pyth oracle.".to_string();
-
-    market.creator = ctx.accounts.creator.key();
-    market.market_type = MarketType::Price;
-    market.title = title;
-    market.description = description;
-    market.bet_token_mint = ctx.accounts.bet_token_mint.key();
-    market.vault = ctx.accounts.vault.key();
-    market.yes_mint = ctx.accounts.yes_mint.key();
-    market.no_mint = ctx.accounts.no_mint.key();
-    market.yes_pool = 0;
-    market.no_pool = 0;
-    market.expiry_timestamp = expiry_timestamp;
-    market.status = MarketStatus::Open;
-    market.outcome = None;
-    market.price_feed_id = Some(price_feed_id);
-    market.target_price = Some(target_price);
-    market.bump = ctx.bumps.market;
-
-    Ok(())
-}
-```
-
-**Step 4: Update mod.rs**
-
-Update `programs/market-factory/src/instructions/mod.rs`:
-```rust
-pub mod create_event_market;
-pub mod create_price_market;
-
-pub use create_event_market::*;
-pub use create_price_market::*;
-```
-
-**Step 5: Add error variant**
-
-Add to `MarketError` in `create_event_market.rs`:
-```rust
-#[error_code]
-pub enum MarketError {
-    #[msg("Expiry timestamp must be in the future")]
-    ExpiryInPast,
-    #[msg("Title exceeds maximum length of 128 characters")]
-    TitleTooLong,
-    #[msg("Description exceeds maximum length of 512 characters")]
-    DescriptionTooLong,
-    #[msg("Target price must be positive")]
-    InvalidTargetPrice,
-}
-```
-
-**Step 6: Update lib.rs**
-
-Add to `programs/market-factory/src/lib.rs`:
-```rust
-pub fn create_price_market(
-    ctx: Context<CreatePriceMarket>,
-    price_feed_id: [u8; 32],
-    target_price: i64,
-    expiry_timestamp: i64,
-) -> Result<()> {
-    instructions::create_price_market::create_price_market(ctx, price_feed_id, target_price, expiry_timestamp)
-}
-```
-
-**Step 7: Build and run test**
-
-Run:
-```bash
-anchor build && anchor test
-```
-
-Expected: PASS
-
-**Step 8: Commit**
-
-```bash
-git add programs/market-factory/
-git commit -m "feat(market-factory): implement create_price_market instruction"
-```
-
----
-
-### Task 5: Implement place_bet
+### Task 4: Implement place_bet
 
 **Files:**
 - Create: `programs/market-factory/src/instructions/place_bet.rs`
@@ -879,7 +608,7 @@ describe("place_bet", () => {
     );
 
     await program.methods
-      .createEventMarket("Test Bet Market", "Description", expiryTimestamp)
+      .createMarket("Test Bet Market", "Description", expiryTimestamp)
       .accounts({
         creator: creator.publicKey,
         market: marketPda,
@@ -933,7 +662,7 @@ describe("place_bet", () => {
         vault: vault,
         bettorTokenAccount: userTokenAccount,
         bettorYesAccount: userYesAccount,
-        bettorNoAccount: userYesAccount, // Not used for YES bet, but required
+        bettorNoAccount: userYesAccount, // Not used for YES bet
         tokenProgram: TOKEN_PROGRAM_ID,
       })
       .signers([creator])
@@ -1001,7 +730,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, MintTo, Token, TokenAccount, Transfer};
 
 use crate::state::{Market, MarketStatus};
-use crate::instructions::create_event_market::MarketError;
+use crate::instructions::create_market::MarketError;
 
 #[derive(Accounts)]
 pub struct PlaceBet<'info> {
@@ -1083,7 +812,6 @@ pub fn place_bet(ctx: Context<PlaceBet>, amount: u64, side: bool) -> Result<()> 
     token::transfer(transfer_ctx, amount)?;
 
     // Mint YES or NO tokens to bettor
-    let market_key = market.key();
     let seeds = &[
         Market::SEED_PREFIX,
         market.creator.as_ref(),
@@ -1127,7 +855,7 @@ pub fn place_bet(ctx: Context<PlaceBet>, amount: u64, side: bool) -> Result<()> 
 
 **Step 4: Add error variants**
 
-Add to `MarketError`:
+Add to `MarketError` in `create_market.rs`:
 ```rust
 #[msg("Market is not open")]
 MarketNotOpen,
@@ -1147,12 +875,10 @@ InvalidBetAmount,
 
 Update `mod.rs`:
 ```rust
-pub mod create_event_market;
-pub mod create_price_market;
+pub mod create_market;
 pub mod place_bet;
 
-pub use create_event_market::*;
-pub use create_price_market::*;
+pub use create_market::*;
 pub use place_bet::*;
 ```
 
@@ -1183,15 +909,134 @@ git commit -m "feat(market-factory): implement place_bet instruction"
 
 ## Phase 3: Settlement Contract
 
-### Task 6: Implement settle_event_market
+### Task 5: Implement settle_market
 
 **Files:**
+- Create: `programs/settlement/src/state.rs`
 - Create: `programs/settlement/src/instructions/mod.rs`
-- Create: `programs/settlement/src/instructions/settle_event_market.rs`
+- Create: `programs/settlement/src/instructions/settle_market.rs`
 - Modify: `programs/settlement/src/lib.rs`
 - Create: `tests/settlement.ts`
 
-**Step 1: Write the failing test**
+**Step 1: Create state.rs (mirror Market struct)**
+
+Create `programs/settlement/src/state.rs`:
+```rust
+use anchor_lang::prelude::*;
+
+// Mirror of Market struct from market-factory
+#[account]
+#[derive(InitSpace)]
+pub struct Market {
+    pub creator: Pubkey,
+    #[max_len(128)]
+    pub title: String,
+    #[max_len(512)]
+    pub description: String,
+    pub bet_token_mint: Pubkey,
+    pub vault: Pubkey,
+    pub yes_mint: Pubkey,
+    pub no_mint: Pubkey,
+    pub yes_pool: u64,
+    pub no_pool: u64,
+    pub expiry_timestamp: i64,
+    pub status: MarketStatus,
+    pub outcome: Option<bool>,
+    pub bump: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
+pub enum MarketStatus {
+    Open,
+    Settled,
+}
+```
+
+**Step 2: Implement settle_market**
+
+Create `programs/settlement/src/instructions/mod.rs`:
+```rust
+pub mod settle_market;
+
+pub use settle_market::*;
+```
+
+Create `programs/settlement/src/instructions/settle_market.rs`:
+```rust
+use anchor_lang::prelude::*;
+
+use crate::state::{Market, MarketStatus};
+
+#[derive(Accounts)]
+pub struct SettleMarket<'info> {
+    pub creator: Signer<'info>,
+
+    #[account(
+        mut,
+        constraint = market.creator == creator.key() @ SettlementError::Unauthorized,
+        constraint = market.status == MarketStatus::Open @ SettlementError::AlreadySettled,
+    )]
+    pub market: Account<'info, Market>,
+}
+
+pub fn settle_market(ctx: Context<SettleMarket>, outcome: bool) -> Result<()> {
+    let market = &mut ctx.accounts.market;
+    let clock = Clock::get()?;
+
+    require!(
+        clock.unix_timestamp >= market.expiry_timestamp,
+        SettlementError::MarketNotExpired
+    );
+
+    market.status = MarketStatus::Settled;
+    market.outcome = Some(outcome);
+
+    Ok(())
+}
+
+#[error_code]
+pub enum SettlementError {
+    #[msg("Only the market creator can settle this market")]
+    Unauthorized,
+    #[msg("Market has already been settled")]
+    AlreadySettled,
+    #[msg("Market has not expired yet")]
+    MarketNotExpired,
+    #[msg("Market not settled yet")]
+    NotSettled,
+    #[msg("Invalid vault")]
+    InvalidVault,
+    #[msg("Wrong mint for redemption")]
+    WrongMint,
+    #[msg("Amount must be positive")]
+    InvalidAmount,
+}
+```
+
+**Step 3: Update settlement lib.rs**
+
+Update `programs/settlement/src/lib.rs`:
+```rust
+use anchor_lang::prelude::*;
+
+pub mod instructions;
+pub mod state;
+
+use instructions::*;
+
+declare_id!("YOUR_SETTLEMENT_PROGRAM_ID");
+
+#[program]
+pub mod settlement {
+    use super::*;
+
+    pub fn settle_market(ctx: Context<SettleMarket>, outcome: bool) -> Result<()> {
+        instructions::settle_market::settle_market(ctx, outcome)
+    }
+}
+```
+
+**Step 4: Write test**
 
 Create `tests/settlement.ts`:
 ```typescript
@@ -1260,7 +1105,7 @@ describe("settlement", () => {
     );
 
     await factoryProgram.methods
-      .createEventMarket("Test Settlement", "Description", expiryTimestamp)
+      .createMarket("Test Settlement", "Description", expiryTimestamp)
       .accounts({
         creator: creator.publicKey,
         market: marketPda,
@@ -1279,10 +1124,10 @@ describe("settlement", () => {
     await new Promise(resolve => setTimeout(resolve, 2000));
   });
 
-  describe("settle_event_market", () => {
+  describe("settle_market", () => {
     it("allows creator to settle with YES outcome", async () => {
       await settlementProgram.methods
-        .settleEventMarket(true) // YES wins
+        .settleMarket(true) // YES wins
         .accounts({
           creator: creator.publicKey,
           market: marketPda,
@@ -1294,165 +1139,11 @@ describe("settlement", () => {
       expect(market.status).to.deep.equal({ settled: {} });
       expect(market.outcome).to.equal(true);
     });
-
-    it("rejects non-creator settlement", async () => {
-      const nonCreator = Keypair.generate();
-
-      try {
-        await settlementProgram.methods
-          .settleEventMarket(false)
-          .accounts({
-            creator: nonCreator.publicKey,
-            market: marketPda,
-          })
-          .signers([nonCreator])
-          .rpc();
-        expect.fail("Should have thrown");
-      } catch (e) {
-        expect(e.message).to.include("Unauthorized");
-      }
-    });
   });
 });
 ```
 
-**Step 2: Run test to verify it fails**
-
-Run:
-```bash
-anchor test
-```
-
-Expected: FAIL
-
-**Step 3: Settlement needs to read Market from market-factory**
-
-The settlement program needs to be able to read and modify the Market account from market-factory. We'll use CPI or share the account structure.
-
-For simplicity in a hackathon, we'll duplicate the Market struct in settlement and use cross-program invocation patterns.
-
-Create `programs/settlement/src/state.rs`:
-```rust
-use anchor_lang::prelude::*;
-
-// Mirror of Market struct from market-factory
-// In production, use a shared crate
-#[account]
-#[derive(InitSpace)]
-pub struct Market {
-    pub creator: Pubkey,
-    pub market_type: MarketType,
-    #[max_len(128)]
-    pub title: String,
-    #[max_len(512)]
-    pub description: String,
-    pub bet_token_mint: Pubkey,
-    pub vault: Pubkey,
-    pub yes_mint: Pubkey,
-    pub no_mint: Pubkey,
-    pub yes_pool: u64,
-    pub no_pool: u64,
-    pub expiry_timestamp: i64,
-    pub status: MarketStatus,
-    pub outcome: Option<bool>,
-    pub price_feed_id: Option<[u8; 32]>,
-    pub target_price: Option<i64>,
-    pub bump: u8,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
-pub enum MarketType {
-    Price,
-    Event,
-}
-
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, InitSpace)]
-pub enum MarketStatus {
-    Open,
-    Settled,
-}
-```
-
-**Step 4: Implement settle_event_market**
-
-Create `programs/settlement/src/instructions/mod.rs`:
-```rust
-pub mod settle_event_market;
-
-pub use settle_event_market::*;
-```
-
-Create `programs/settlement/src/instructions/settle_event_market.rs`:
-```rust
-use anchor_lang::prelude::*;
-
-use crate::state::{Market, MarketStatus, MarketType};
-
-#[derive(Accounts)]
-pub struct SettleEventMarket<'info> {
-    pub creator: Signer<'info>,
-
-    #[account(
-        mut,
-        constraint = market.creator == creator.key() @ SettlementError::Unauthorized,
-        constraint = market.market_type == MarketType::Event @ SettlementError::WrongMarketType,
-        constraint = market.status == MarketStatus::Open @ SettlementError::AlreadySettled,
-    )]
-    pub market: Account<'info, Market>,
-}
-
-pub fn settle_event_market(ctx: Context<SettleEventMarket>, outcome: bool) -> Result<()> {
-    let market = &mut ctx.accounts.market;
-    let clock = Clock::get()?;
-
-    require!(
-        clock.unix_timestamp >= market.expiry_timestamp,
-        SettlementError::MarketNotExpired
-    );
-
-    market.status = MarketStatus::Settled;
-    market.outcome = Some(outcome);
-
-    Ok(())
-}
-
-#[error_code]
-pub enum SettlementError {
-    #[msg("Only the market creator can settle this market")]
-    Unauthorized,
-    #[msg("This instruction is only for event markets")]
-    WrongMarketType,
-    #[msg("Market has already been settled")]
-    AlreadySettled,
-    #[msg("Market has not expired yet")]
-    MarketNotExpired,
-}
-```
-
-**Step 5: Update settlement lib.rs**
-
-Update `programs/settlement/src/lib.rs`:
-```rust
-use anchor_lang::prelude::*;
-
-pub mod instructions;
-pub mod state;
-
-use instructions::*;
-
-declare_id!("YOUR_SETTLEMENT_PROGRAM_ID");
-
-#[program]
-pub mod settlement {
-    use super::*;
-
-    pub fn settle_event_market(ctx: Context<SettleEventMarket>, outcome: bool) -> Result<()> {
-        instructions::settle_event_market::settle_event_market(ctx, outcome)
-    }
-}
-```
-
-**Step 6: Build and run test**
+**Step 5: Build and run test**
 
 Run:
 ```bash
@@ -1461,127 +1152,16 @@ anchor build && anchor test
 
 Expected: PASS
 
-**Step 7: Commit**
+**Step 6: Commit**
 
 ```bash
 git add programs/settlement/ tests/
-git commit -m "feat(settlement): implement settle_event_market instruction"
+git commit -m "feat(settlement): implement settle_market instruction"
 ```
 
 ---
 
-### Task 7: Implement settle_price_market
-
-**Files:**
-- Create: `programs/settlement/src/instructions/settle_price_market.rs`
-- Modify: `programs/settlement/src/instructions/mod.rs`
-- Modify: `programs/settlement/src/lib.rs`
-- Modify: `tests/settlement.ts`
-
-**Step 1: Implement settle_price_market**
-
-Create `programs/settlement/src/instructions/settle_price_market.rs`:
-```rust
-use anchor_lang::prelude::*;
-use pyth_solana_receiver_sdk::price_update::PriceUpdateV2;
-
-use crate::state::{Market, MarketStatus, MarketType};
-use crate::instructions::settle_event_market::SettlementError;
-
-#[derive(Accounts)]
-pub struct SettlePriceMarket<'info> {
-    pub settler: Signer<'info>,
-
-    #[account(
-        mut,
-        constraint = market.market_type == MarketType::Price @ SettlementError::WrongMarketType,
-        constraint = market.status == MarketStatus::Open @ SettlementError::AlreadySettled,
-    )]
-    pub market: Account<'info, Market>,
-
-    pub price_update: Account<'info, PriceUpdateV2>,
-}
-
-pub fn settle_price_market(ctx: Context<SettlePriceMarket>) -> Result<()> {
-    let market = &mut ctx.accounts.market;
-    let clock = Clock::get()?;
-
-    require!(
-        clock.unix_timestamp >= market.expiry_timestamp,
-        SettlementError::MarketNotExpired
-    );
-
-    let price_feed_id = market.price_feed_id.ok_or(SettlementError::MissingPriceFeed)?;
-    let target_price = market.target_price.ok_or(SettlementError::MissingTargetPrice)?;
-
-    // Get price from Pyth
-    let price_update = &ctx.accounts.price_update;
-    let price = price_update.get_price_no_older_than(
-        &clock,
-        60, // Max 60 seconds old
-        &price_feed_id,
-    ).map_err(|_| SettlementError::PriceUnavailable)?;
-
-    // Determine outcome: YES wins if price >= target
-    let current_price = price.price;
-    let outcome = current_price >= target_price;
-
-    market.status = MarketStatus::Settled;
-    market.outcome = Some(outcome);
-
-    Ok(())
-}
-```
-
-**Step 2: Add error variants and update mod.rs**
-
-Add to `SettlementError`:
-```rust
-#[msg("Price feed ID not set")]
-MissingPriceFeed,
-#[msg("Target price not set")]
-MissingTargetPrice,
-#[msg("Unable to get price from oracle")]
-PriceUnavailable,
-```
-
-Update `mod.rs`:
-```rust
-pub mod settle_event_market;
-pub mod settle_price_market;
-
-pub use settle_event_market::*;
-pub use settle_price_market::*;
-```
-
-**Step 3: Update lib.rs**
-
-Add to `lib.rs`:
-```rust
-pub fn settle_price_market(ctx: Context<SettlePriceMarket>) -> Result<()> {
-    instructions::settle_price_market::settle_price_market(ctx)
-}
-```
-
-**Step 4: Build**
-
-Run:
-```bash
-anchor build
-```
-
-Expected: Build succeeds (skip test for Pyth as it requires mainnet/devnet)
-
-**Step 5: Commit**
-
-```bash
-git add programs/settlement/
-git commit -m "feat(settlement): implement settle_price_market with Pyth oracle"
-```
-
----
-
-### Task 8: Implement redeem
+### Task 6: Implement redeem
 
 **Files:**
 - Create: `programs/settlement/src/instructions/redeem.rs`
@@ -1589,37 +1169,7 @@ git commit -m "feat(settlement): implement settle_price_market with Pyth oracle"
 - Modify: `programs/settlement/src/lib.rs`
 - Modify: `tests/settlement.ts`
 
-**Step 1: Write the failing test**
-
-Add to `tests/settlement.ts`:
-```typescript
-describe("redeem", () => {
-  // ... setup code to create market, place bets, settle ...
-
-  it("allows winner to redeem proportionally", async () => {
-    // User with 100 YES tokens in a 250 YES / 200 NO pool
-    // If YES wins, they get 100/250 * 450 = 180 tokens
-
-    await settlementProgram.methods
-      .redeem(new anchor.BN(100_000_000_000))
-      .accounts({
-        redeemer: winner.publicKey,
-        market: marketPda,
-        vault: vault,
-        winningMint: yesMint,
-        redeemerWinningAccount: winnerYesAccount,
-        redeemerBetAccount: winnerBetAccount,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .signers([winner])
-      .rpc();
-
-    // Check balance increased
-  });
-});
-```
-
-**Step 2: Implement redeem.rs**
+**Step 1: Implement redeem.rs**
 
 Create `programs/settlement/src/instructions/redeem.rs`:
 ```rust
@@ -1627,7 +1177,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Burn, Mint, Token, TokenAccount, Transfer};
 
 use crate::state::{Market, MarketStatus};
-use crate::instructions::settle_event_market::SettlementError;
+use crate::instructions::settle_market::SettlementError;
 
 #[derive(Accounts)]
 pub struct Redeem<'info> {
@@ -1727,30 +1277,32 @@ pub fn redeem(ctx: Context<Redeem>, amount: u64) -> Result<()> {
 }
 ```
 
-**Step 3: Add error variants and update files**
+**Step 2: Update mod.rs and lib.rs**
 
-Add to `SettlementError`:
+Update `mod.rs`:
 ```rust
-#[msg("Market not settled yet")]
-NotSettled,
-#[msg("Invalid vault")]
-InvalidVault,
-#[msg("Wrong mint for redemption")]
-WrongMint,
-#[msg("Amount must be positive")]
-InvalidAmount,
+pub mod settle_market;
+pub mod redeem;
+
+pub use settle_market::*;
+pub use redeem::*;
 ```
 
-Update `mod.rs` and `lib.rs` accordingly.
+Add to `lib.rs`:
+```rust
+pub fn redeem(ctx: Context<Redeem>, amount: u64) -> Result<()> {
+    instructions::redeem::redeem(ctx, amount)
+}
+```
 
-**Step 4: Build and test**
+**Step 3: Build and test**
 
 Run:
 ```bash
 anchor build && anchor test
 ```
 
-**Step 5: Commit**
+**Step 4: Commit**
 
 ```bash
 git add programs/settlement/
@@ -1759,14 +1311,12 @@ git commit -m "feat(settlement): implement redeem instruction with pari-mutuel p
 
 ---
 
-## Phase 4: Frontend Setup
+## Phase 4: Frontend
 
-### Task 9: Initialize Next.js Frontend
+### Task 7: Initialize Next.js Frontend
 
 **Files:**
 - Create: `app/` directory with Next.js structure
-- Create: `package.json`
-- Create: `tailwind.config.js`
 
 **Step 1: Initialize Next.js**
 
@@ -1843,14 +1393,15 @@ git commit -m "chore: initialize Next.js frontend with wallet provider"
 
 ---
 
-### Task 10: Create Market List Page
+### Task 8: Create Core Components
 
 **Files:**
-- Modify: `app/page.tsx`
 - Create: `app/components/MarketCard.tsx`
-- Create: `app/hooks/useMarkets.ts`
+- Create: `app/components/BetPanel.tsx`
+- Create: `app/components/OddsDisplay.tsx`
+- Create: `app/components/CreateMarketForm.tsx`
 
-**Step 1: Create MarketCard component**
+**Step 1: Create components**
 
 Create `app/components/MarketCard.tsx`:
 ```typescript
@@ -1866,7 +1417,6 @@ interface MarketCardProps {
   noPool: number;
   expiry: Date;
   status: "open" | "settled";
-  marketType: "price" | "event";
 }
 
 export function MarketCard({
@@ -1877,17 +1427,16 @@ export function MarketCard({
   noPool,
   expiry,
   status,
-  marketType,
 }: MarketCardProps) {
   const totalPool = yesPool + noPool;
-  const yesOdds = totalPool > 0 ? (totalPool / yesPool).toFixed(2) : "-.--";
-  const noOdds = totalPool > 0 ? (totalPool / noPool).toFixed(2) : "-.--";
+  const yesOdds = yesPool > 0 ? (totalPool / yesPool).toFixed(2) : "-.--";
+  const noOdds = noPool > 0 ? (totalPool / noPool).toFixed(2) : "-.--";
 
   return (
     <Link href={`/market/${pubkey}`}>
       <div className="border rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer">
         <div className="flex items-center gap-2 mb-2">
-          <span>{marketType === "price" ? "📈" : "🎯"}</span>
+          <span>🎯</span>
           <h3 className="font-semibold">{title}</h3>
         </div>
 
@@ -1914,105 +1463,6 @@ export function MarketCard({
   );
 }
 ```
-
-**Step 2: Create markets hook**
-
-Create `app/hooks/useMarkets.ts`:
-```typescript
-"use client";
-
-import { useConnection } from "@solana/wallet-adapter-react";
-import { useQuery } from "@tanstack/react-query";
-import { Program, AnchorProvider } from "@coral-xyz/anchor";
-import { PublicKey } from "@solana/web3.js";
-
-// TODO: Import IDL after build
-// import { MarketFactory } from "../idl/market_factory";
-
-export function useMarkets() {
-  const { connection } = useConnection();
-
-  return useQuery({
-    queryKey: ["markets"],
-    queryFn: async () => {
-      // TODO: Fetch all market accounts
-      // const program = new Program(IDL, PROGRAM_ID, provider);
-      // return program.account.market.all();
-      return [];
-    },
-  });
-}
-```
-
-**Step 3: Update page.tsx**
-
-```typescript
-"use client";
-
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { MarketCard } from "./components/MarketCard";
-import { useMarkets } from "./hooks/useMarkets";
-
-export default function Home() {
-  const { data: markets, isLoading } = useMarkets();
-
-  return (
-    <main className="container mx-auto px-4 py-8">
-      <header className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">Sol Vibe</h1>
-        <WalletMultiButton />
-      </header>
-
-      <div className="flex gap-4 mb-6">
-        <a href="/create" className="px-4 py-2 bg-blue-600 text-white rounded">
-          创建市场
-        </a>
-        <a href="/portfolio" className="px-4 py-2 border rounded">
-          我的持仓
-        </a>
-      </div>
-
-      {isLoading ? (
-        <p>加载中...</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {markets?.map((market: any) => (
-            <MarketCard
-              key={market.pubkey}
-              pubkey={market.pubkey}
-              title={market.title}
-              betToken="TRUMP"
-              yesPool={market.yesPool}
-              noPool={market.noPool}
-              expiry={new Date(market.expiryTimestamp * 1000)}
-              status={market.status}
-              marketType={market.marketType}
-            />
-          ))}
-        </div>
-      )}
-    </main>
-  );
-}
-```
-
-**Step 4: Commit**
-
-```bash
-git add app/
-git commit -m "feat(frontend): add market list page with MarketCard component"
-```
-
----
-
-### Task 11: Create Market Detail Page with Betting
-
-**Files:**
-- Create: `app/market/[id]/page.tsx`
-- Create: `app/components/BetPanel.tsx`
-- Create: `app/components/OddsDisplay.tsx`
-
-**Step 1: Create OddsDisplay component**
 
 Create `app/components/OddsDisplay.tsx`:
 ```typescript
@@ -2047,8 +1497,6 @@ export function OddsDisplay({ yesPool, noPool, tokenSymbol }: OddsDisplayProps) 
   );
 }
 ```
-
-**Step 2: Create BetPanel component**
 
 Create `app/components/BetPanel.tsx`:
 ```typescript
@@ -2127,109 +1575,6 @@ export function BetPanel({ marketPubkey, tokenSymbol, onBet }: BetPanelProps) {
 }
 ```
 
-**Step 3: Create market detail page**
-
-Create `app/market/[id]/page.tsx`:
-```typescript
-"use client";
-
-import { useParams } from "next/navigation";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { OddsDisplay } from "../../components/OddsDisplay";
-import { BetPanel } from "../../components/BetPanel";
-
-export default function MarketPage() {
-  const params = useParams();
-  const marketId = params.id as string;
-
-  // TODO: Fetch market data
-  const market = {
-    title: "Trump 1/31前打伊朗?",
-    description: "Market resolves YES if military action occurs before deadline.",
-    betToken: "TRUMP",
-    creator: "7xK2...",
-    yesPool: 250000,
-    noPool: 200000,
-    expiry: new Date("2026-01-31"),
-    status: "open",
-    marketType: "event",
-  };
-
-  const handleBet = async (amount: number, side: boolean) => {
-    // TODO: Call place_bet instruction
-    console.log(`Betting ${amount} on ${side ? "YES" : "NO"}`);
-  };
-
-  return (
-    <main className="container mx-auto px-4 py-8 max-w-2xl">
-      <header className="flex justify-between items-center mb-8">
-        <a href="/" className="text-blue-600">← 返回</a>
-        <WalletMultiButton />
-      </header>
-
-      <div className="space-y-6">
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span>{market.marketType === "price" ? "📈" : "🎯"}</span>
-            <h1 className="text-2xl font-bold">{market.title}</h1>
-          </div>
-          <p className="text-gray-600">{market.description}</p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <span className="text-gray-500">投注代币:</span> {market.betToken}
-          </div>
-          <div>
-            <span className="text-gray-500">创建者:</span> {market.creator}
-          </div>
-          <div>
-            <span className="text-gray-500">截止时间:</span>{" "}
-            {market.expiry.toLocaleString()}
-          </div>
-          <div>
-            <span className="text-gray-500">状态:</span>{" "}
-            {market.status === "open" ? "进行中" : "已结算"}
-          </div>
-        </div>
-
-        <OddsDisplay
-          yesPool={market.yesPool}
-          noPool={market.noPool}
-          tokenSymbol={market.betToken}
-        />
-
-        {market.status === "open" && (
-          <BetPanel
-            marketPubkey={marketId}
-            tokenSymbol={market.betToken}
-            onBet={handleBet}
-          />
-        )}
-      </div>
-    </main>
-  );
-}
-```
-
-**Step 4: Commit**
-
-```bash
-git add app/
-git commit -m "feat(frontend): add market detail page with betting panel"
-```
-
----
-
-### Task 12: Create Market Form and Portfolio Page
-
-**Files:**
-- Create: `app/create/page.tsx`
-- Create: `app/portfolio/page.tsx`
-- Create: `app/components/CreateMarketForm.tsx`
-
-**Step 1: Create CreateMarketForm**
-
 Create `app/components/CreateMarketForm.tsx`:
 ```typescript
 "use client";
@@ -2239,12 +1584,10 @@ import { useWallet } from "@solana/wallet-adapter-react";
 
 export function CreateMarketForm() {
   const { connected } = useWallet();
-  const [marketType, setMarketType] = useState<"event" | "price">("event");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [betTokenMint, setBetTokenMint] = useState("");
   const [expiry, setExpiry] = useState("");
-  const [targetPrice, setTargetPrice] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2253,7 +1596,7 @@ export function CreateMarketForm() {
 
     setLoading(true);
     try {
-      // TODO: Call create_event_market or create_price_market
+      // TODO: Call create_market instruction
       console.log("Creating market...");
     } catch (error) {
       console.error("Failed to create market:", error);
@@ -2269,64 +1612,27 @@ export function CreateMarketForm() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium mb-1">市场类型</label>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              checked={marketType === "event"}
-              onChange={() => setMarketType("event")}
-            />
-            通用事件
-          </label>
-          <label className="flex items-center gap-2">
-            <input
-              type="radio"
-              checked={marketType === "price"}
-              onChange={() => setMarketType("price")}
-            />
-            价格预测
-          </label>
-        </div>
+        <label className="block text-sm font-medium mb-1">标题</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Trump 1/31前打伊朗?"
+          className="w-full px-3 py-2 border rounded"
+          required
+        />
       </div>
 
-      {marketType === "event" ? (
-        <>
-          <div>
-            <label className="block text-sm font-medium mb-1">标题</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Trump 1/31前打伊朗?"
-              className="w-full px-3 py-2 border rounded"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">描述</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="详细规则说明..."
-              className="w-full px-3 py-2 border rounded"
-              rows={3}
-            />
-          </div>
-        </>
-      ) : (
-        <div>
-          <label className="block text-sm font-medium mb-1">目标价格 (USD)</label>
-          <input
-            type="number"
-            value={targetPrice}
-            onChange={(e) => setTargetPrice(e.target.value)}
-            placeholder="150000"
-            className="w-full px-3 py-2 border rounded"
-            required
-          />
-        </div>
-      )}
+      <div>
+        <label className="block text-sm font-medium mb-1">描述</label>
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="详细规则说明..."
+          className="w-full px-3 py-2 border rounded"
+          rows={3}
+        />
+      </div>
 
       <div>
         <label className="block text-sm font-medium mb-1">投注代币 (合约地址)</label>
@@ -2363,7 +1669,144 @@ export function CreateMarketForm() {
 }
 ```
 
-**Step 2: Create pages**
+**Step 2: Commit**
+
+```bash
+git add app/components/
+git commit -m "feat(frontend): add core UI components"
+```
+
+---
+
+### Task 9: Create Pages
+
+**Files:**
+- Modify: `app/page.tsx`
+- Create: `app/market/[id]/page.tsx`
+- Create: `app/create/page.tsx`
+- Create: `app/portfolio/page.tsx`
+
+**Step 1: Create pages**
+
+Update `app/page.tsx`:
+```typescript
+"use client";
+
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { MarketCard } from "./components/MarketCard";
+
+export default function Home() {
+  // TODO: Fetch markets from chain
+  const markets: any[] = [];
+
+  return (
+    <main className="container mx-auto px-4 py-8">
+      <header className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold">KarmaPi</h1>
+        <WalletMultiButton />
+      </header>
+
+      <div className="flex gap-4 mb-6">
+        <a href="/create" className="px-4 py-2 bg-blue-600 text-white rounded">
+          创建市场
+        </a>
+        <a href="/portfolio" className="px-4 py-2 border rounded">
+          我的持仓
+        </a>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {markets.map((market: any) => (
+          <MarketCard
+            key={market.pubkey}
+            pubkey={market.pubkey}
+            title={market.title}
+            betToken="TRUMP"
+            yesPool={market.yesPool}
+            noPool={market.noPool}
+            expiry={new Date(market.expiryTimestamp * 1000)}
+            status={market.status}
+          />
+        ))}
+        {markets.length === 0 && (
+          <p className="text-gray-500 col-span-full text-center py-8">
+            暂无市场，点击「创建市场」开始
+          </p>
+        )}
+      </div>
+    </main>
+  );
+}
+```
+
+Create `app/market/[id]/page.tsx`:
+```typescript
+"use client";
+
+import { useParams } from "next/navigation";
+import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { OddsDisplay } from "../../components/OddsDisplay";
+import { BetPanel } from "../../components/BetPanel";
+
+export default function MarketPage() {
+  const params = useParams();
+  const marketId = params.id as string;
+
+  // TODO: Fetch market data from chain
+  const market = {
+    title: "Trump 1/31前打伊朗?",
+    description: "Market resolves YES if military action occurs.",
+    betToken: "TRUMP",
+    creator: "7xK2...",
+    yesPool: 250000,
+    noPool: 200000,
+    expiry: new Date("2026-01-31"),
+    status: "open",
+  };
+
+  const handleBet = async (amount: number, side: boolean) => {
+    // TODO: Call place_bet instruction
+    console.log(`Betting ${amount} on ${side ? "YES" : "NO"}`);
+  };
+
+  return (
+    <main className="container mx-auto px-4 py-8 max-w-2xl">
+      <header className="flex justify-between items-center mb-8">
+        <a href="/" className="text-blue-600">← 返回</a>
+        <WalletMultiButton />
+      </header>
+
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold mb-2">🎯 {market.title}</h1>
+          <p className="text-gray-600">{market.description}</p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div><span className="text-gray-500">投注代币:</span> {market.betToken}</div>
+          <div><span className="text-gray-500">创建者:</span> {market.creator}</div>
+          <div><span className="text-gray-500">截止时间:</span> {market.expiry.toLocaleString()}</div>
+          <div><span className="text-gray-500">状态:</span> {market.status === "open" ? "进行中" : "已结算"}</div>
+        </div>
+
+        <OddsDisplay
+          yesPool={market.yesPool}
+          noPool={market.noPool}
+          tokenSymbol={market.betToken}
+        />
+
+        {market.status === "open" && (
+          <BetPanel
+            marketPubkey={marketId}
+            tokenSymbol={market.betToken}
+            onBet={handleBet}
+          />
+        )}
+      </div>
+    </main>
+  );
+}
+```
 
 Create `app/create/page.tsx`:
 ```typescript
@@ -2395,9 +1838,7 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useWallet } from "@solana/wallet-adapter-react";
 
 export default function PortfolioPage() {
-  const { connected, publicKey } = useWallet();
-
-  // TODO: Fetch user's positions and created markets
+  const { connected } = useWallet();
 
   if (!connected) {
     return (
@@ -2420,117 +1861,27 @@ export default function PortfolioPage() {
       <section className="mb-8">
         <h2 className="text-xl font-semibold mb-4">我创建的市场</h2>
         <p className="text-gray-500">暂无</p>
-        {/* TODO: List markets where user is creator, with settle buttons */}
       </section>
 
       <section>
         <h2 className="text-xl font-semibold mb-4">我参与的市场</h2>
         <p className="text-gray-500">暂无</p>
-        {/* TODO: List user's YES/NO token holdings with redeem buttons */}
       </section>
     </main>
   );
 }
 ```
 
-**Step 3: Commit**
+**Step 2: Commit**
 
 ```bash
 git add app/
-git commit -m "feat(frontend): add create market form and portfolio page"
+git commit -m "feat(frontend): add all pages"
 ```
 
 ---
 
-## Phase 5: Integration and Deployment
-
-### Task 13: Connect Frontend to Contracts
-
-**Files:**
-- Create: `app/idl/` (copy from target/idl after build)
-- Create: `app/hooks/useProgram.ts`
-- Modify: All hooks to use actual program calls
-
-**Step 1: Copy IDL files**
-
-After `anchor build`:
-```bash
-cp target/idl/market_factory.json app/idl/
-cp target/idl/settlement.json app/idl/
-cp target/types/market_factory.ts app/idl/
-cp target/types/settlement.ts app/idl/
-```
-
-**Step 2: Create useProgram hook**
-
-Create `app/hooks/useProgram.ts`:
-```typescript
-import { useMemo } from "react";
-import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { Program, AnchorProvider } from "@coral-xyz/anchor";
-import { MarketFactory, IDL as MarketFactoryIDL } from "../idl/market_factory";
-import { Settlement, IDL as SettlementIDL } from "../idl/settlement";
-
-const MARKET_FACTORY_PROGRAM_ID = "YOUR_MARKET_FACTORY_PROGRAM_ID";
-const SETTLEMENT_PROGRAM_ID = "YOUR_SETTLEMENT_PROGRAM_ID";
-
-export function useMarketFactoryProgram() {
-  const { connection } = useConnection();
-  const wallet = useWallet();
-
-  return useMemo(() => {
-    if (!wallet.publicKey) return null;
-
-    const provider = new AnchorProvider(
-      connection,
-      wallet as any,
-      { commitment: "confirmed" }
-    );
-
-    return new Program<MarketFactory>(
-      MarketFactoryIDL,
-      MARKET_FACTORY_PROGRAM_ID,
-      provider
-    );
-  }, [connection, wallet]);
-}
-
-export function useSettlementProgram() {
-  const { connection } = useConnection();
-  const wallet = useWallet();
-
-  return useMemo(() => {
-    if (!wallet.publicKey) return null;
-
-    const provider = new AnchorProvider(
-      connection,
-      wallet as any,
-      { commitment: "confirmed" }
-    );
-
-    return new Program<Settlement>(
-      SettlementIDL,
-      SETTLEMENT_PROGRAM_ID,
-      provider
-    );
-  }, [connection, wallet]);
-}
-```
-
-**Step 3: Update hooks and components to use programs**
-
-Update each component to use the program hooks for actual blockchain interactions.
-
-**Step 4: Commit**
-
-```bash
-git add app/
-git commit -m "feat(frontend): integrate with Anchor programs"
-```
-
----
-
-### Task 14: Deploy to Sonic Testnet
+### Task 10: Deploy to Sonic Testnet
 
 **Step 1: Configure Solana CLI for Sonic**
 
@@ -2540,10 +1891,7 @@ solana config set --url https://api.testnet.sonic.game
 
 **Step 2: Get testnet SOL**
 
-Visit Sonic faucet or use:
-```bash
-solana airdrop 2
-```
+Visit Sonic faucet or use airdrop.
 
 **Step 3: Deploy programs**
 
@@ -2551,16 +1899,16 @@ solana airdrop 2
 anchor deploy --provider.cluster https://api.testnet.sonic.game
 ```
 
-**Step 4: Update frontend with deployed program IDs**
+**Step 4: Update frontend with program IDs**
 
-Update `app/hooks/useProgram.ts` with actual program IDs.
+Create `app/config.ts` with deployed program IDs.
 
 **Step 5: Deploy frontend**
 
 ```bash
 cd app
 npm run build
-# Deploy to Vercel, Netlify, or similar
+# Deploy to Vercel/Netlify
 ```
 
 **Step 6: Commit**
@@ -2577,12 +1925,8 @@ git commit -m "chore: deploy to Sonic testnet"
 | Phase | Tasks | Key Deliverables |
 |-------|-------|------------------|
 | 1 | 1-2 | Anchor workspace, shared types |
-| 2 | 3-5 | Market Factory: create markets, place bets |
-| 3 | 6-8 | Settlement: settle markets, redeem winnings |
-| 4 | 9-12 | Next.js frontend with all pages |
-| 5 | 13-14 | Integration and deployment |
+| 2 | 3-4 | Market Factory: create_market, place_bet |
+| 3 | 5-6 | Settlement: settle_market, redeem |
+| 4 | 7-10 | Next.js frontend + deployment |
 
-**Sources:**
-- [Anchor Framework](https://www.anchor-lang.com/docs)
-- [Testing Solana Programs](https://www.helius.dev/blog/a-guide-to-testing-solana-programs)
-- [Sonic SVM Deployment](https://docs.sonic.game/developers/getting-started/build-and-deploy-your-first-program)
+**Total: 10 tasks** (reduced from 14 by removing price market functionality)
