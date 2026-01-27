@@ -20,4 +20,8 @@ pub mod market_factory {
     ) -> Result<()> {
         instructions::create_market::create_market(ctx, title, description, expiry_timestamp)
     }
+
+    pub fn place_bet(ctx: Context<PlaceBet>, amount: u64, side: bool) -> Result<()> {
+        instructions::place_bet::place_bet(ctx, amount, side)
+    }
 }
