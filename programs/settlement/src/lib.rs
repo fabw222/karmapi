@@ -14,4 +14,8 @@ pub mod settlement {
     pub fn settle_market(ctx: Context<SettleMarket>, outcome: bool) -> Result<()> {
         instructions::settle_market::settle_market(ctx, outcome)
     }
+
+    pub fn redeem(ctx: Context<Redeem>, amount: u64) -> Result<()> {
+        instructions::redeem::redeem(ctx, amount)
+    }
 }

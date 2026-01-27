@@ -45,4 +45,8 @@ pub enum SettlementError {
     WrongMint,
     #[msg("Amount must be positive")]
     InvalidAmount,
+    #[msg("No winning bets to redeem against")]
+    NoWinningBets,
+    #[msg("Arithmetic overflow")]
+    ArithmeticOverflow,
 }
