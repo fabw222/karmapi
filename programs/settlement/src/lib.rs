@@ -1,16 +1,17 @@
 use anchor_lang::prelude::*;
 
+pub mod instructions;
+pub mod state;
+
+use instructions::*;
+
 declare_id!("8oErexD9Jgq6CfZvqGToAorLk1EHcdvKnNpcmfTen1XU");
 
 #[program]
 pub mod settlement {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        msg!("Greetings from: {:?}", ctx.program_id);
-        Ok(())
+    pub fn settle_market(ctx: Context<SettleMarket>, outcome: bool) -> Result<()> {
+        instructions::settle_market::settle_market(ctx, outcome)
     }
 }
-
-#[derive(Accounts)]
-pub struct Initialize {}
