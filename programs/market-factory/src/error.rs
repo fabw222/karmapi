@@ -20,4 +20,25 @@ pub enum MarketError {
     InvalidVault,
     #[msg("Bet amount must be positive")]
     InvalidBetAmount,
+    #[msg("Arithmetic overflow")]
+    ArithmeticOverflow,
+    // Settlement errors
+    #[msg("Only the market creator can settle this market")]
+    Unauthorized,
+    #[msg("Market has already been settled")]
+    AlreadySettled,
+    #[msg("Market has not expired yet")]
+    MarketNotExpired,
+    #[msg("Market not settled yet")]
+    NotSettled,
+    #[msg("Wrong mint for redemption")]
+    WrongMint,
+    #[msg("Amount must be positive")]
+    InvalidAmount,
+    #[msg("No winning bets to redeem against")]
+    NoWinningBets,
+    #[msg("Vault is empty")]
+    VaultEmpty,
+    #[msg("Payout amount is too small")]
+    PayoutTooSmall,
 }

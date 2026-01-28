@@ -24,4 +24,12 @@ pub mod market_factory {
     pub fn place_bet(ctx: Context<PlaceBet>, amount: u64, side: bool) -> Result<()> {
         instructions::place_bet::place_bet(ctx, amount, side)
     }
+
+    pub fn settle_market(ctx: Context<SettleMarket>, outcome: bool) -> Result<()> {
+        instructions::settle_market::settle_market(ctx, outcome)
+    }
+
+    pub fn redeem(ctx: Context<Redeem>, amount: u64) -> Result<()> {
+        instructions::redeem::redeem(ctx, amount)
+    }
 }

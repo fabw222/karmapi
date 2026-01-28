@@ -5,3 +5,13 @@ target
 node_modules
 test-ledger
 .yarn
+
+# AI/Editor tool directories
+.agents/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.github/
+.opencode/
+.windsurf/

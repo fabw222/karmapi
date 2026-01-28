@@ -105,7 +105,9 @@ pub fn place_bet(ctx: Context<PlaceBet>, amount: u64, side: bool) -> Result<()> 
             signer_seeds,
         );
         token::mint_to(mint_ctx, amount)?;
-        market.yes_pool = market.yes_pool.checked_add(amount).unwrap();
+        market.yes_pool = market.yes_pool
+            .checked_add(amount)
+            .ok_or(error!(MarketError::ArithmeticOverflow))?;
     } else {
         // Mint NO tokens
         let mint_ctx = CpiContext::new_with_signer(
@@ -118,7 +120,9 @@ pub fn place_bet(ctx: Context<PlaceBet>, amount: u64, side: bool) -> Result<()> 
             signer_seeds,
         );
         token::mint_to(mint_ctx, amount)?;
-        market.no_pool = market.no_pool.checked_add(amount).unwrap();
+        market.no_pool = market.no_pool
+            .checked_add(amount)
+            .ok_or(error!(MarketError::ArithmeticOverflow))?;
     }
 
     Ok(())

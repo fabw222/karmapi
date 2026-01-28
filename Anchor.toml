@@ -1,5 +1,6 @@
 [toolchain]
 package_manager = "yarn"
+channel = "1.79.0"
 
 [features]
 resolution = true
@@ -13,8 +14,9 @@ settlement = "8oErexD9Jgq6CfZvqGToAorLk1EHcdvKnNpcmfTen1XU"
 market_factory = "AQR7DVzsy1dKM3TdRqLMbzAb5waubBJYdXd9BGuCtVpR"
 settlement = "8oErexD9Jgq6CfZvqGToAorLk1EHcdvKnNpcmfTen1XU"
 
-# Sonic SVM Testnet - use same IDs as devnet
-# Deploy: anchor deploy --provider.cluster https://api.testnet.sonic.game
+[programs.mainnet]
+market_factory = "AQR7DVzsy1dKM3TdRqLMbzAb5waubBJYdXd9BGuCtVpR"
+settlement = "8oErexD9Jgq6CfZvqGToAorLk1EHcdvKnNpcmfTen1XU"
 
 [registry]
 url = "https://api.apr.dev"
@@ -25,3 +27,6 @@ wallet = "~/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
+[test]
+startup_wait = 60000

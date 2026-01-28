@@ -10,13 +10,15 @@ import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-const SONIC_TESTNET_RPC = "https://api.testnet.sonic.game";
+// Use environment variable for RPC endpoint, supporting devnet/mainnet switching
+const RPC_ENDPOINT =
+  process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
 export const WalletProvider: FC<{ children: ReactNode }> = ({ children }) => {
   const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
 
   return (
-    <ConnectionProvider endpoint={SONIC_TESTNET_RPC}>
+    <ConnectionProvider endpoint={RPC_ENDPOINT}>
       <SolanaWalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </SolanaWalletProvider>
