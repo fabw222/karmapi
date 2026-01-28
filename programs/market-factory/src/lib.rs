@@ -6,7 +6,7 @@ pub mod state;
 
 use instructions::*;
 
-declare_id!("AQR7DVzsy1dKM3TdRqLMbzAb5waubBJYdXd9BGuCtVpR");
+declare_id!("CCLkxLFFCiBW57nphnjr2QMEMTahwL77JQNRq57VB932");
 
 #[program]
 pub mod market_factory {

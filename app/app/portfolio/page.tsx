@@ -1,97 +1,69 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-
-// Mock position data - will be replaced with actual data from chain
-interface Position {
-  marketId: string;
-  question: string;
-  side: "yes" | "no";
-  shares: number;
-  avgPrice: number;
-  currentPrice: number;
-  totalInvested: number;
-  potentialPayout: number;
-  resolved: boolean;
-  outcome?: boolean;
-}
-
-const mockPositions: Position[] = [
-  {
-    marketId: "market_1",
-    question: "Will Bitcoin reach $100,000 by end of 2024?",
-    side: "yes",
-    shares: 2.5,
-    avgPrice: 0.62,
-    currentPrice: 0.625,
-    totalInvested: 1.55,
-    potentialPayout: 2.5,
-    resolved: false,
-  },
-  {
-    marketId: "market_2",
-    question: "Will Solana process over 100,000 TPS in 2024?",
-    side: "no",
-    shares: 5.0,
-    avgPrice: 0.8,
-    currentPrice: 0.8,
-    totalInvested: 4.0,
-    potentialPayout: 5.0,
-    resolved: false,
-  },
-  {
-    marketId: "market_6",
-    question: "Did Fed cut rates in Sept 2024?",
-    side: "yes",
-    shares: 3.0,
-    avgPrice: 0.65,
-    currentPrice: 1.0,
-    totalInvested: 1.95,
-    potentialPayout: 3.0,
-    resolved: true,
-    outcome: true,
-  },
-];
+import { useUserPositions } from "@/hooks/useUserPositions";
+import { useRedeem } from "@/hooks/useRedeem";
+import { formatPoolAmount } from "@/types/market";
 
 export default function PortfolioPage() {
   const { publicKey, connected } = useWallet();
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const { data: positionsData, isLoading, refetch } = useUserPositions();
+  const { redeem, isLoading: isRedeeming } = useRedeem();
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
 
-  useEffect(() => {
-    if (!connected) {
-      setPositions([]);
-      setIsLoading(false);
-      return;
+  const positions = useMemo(() => {
+    if (!positionsData) return [];
+    return positionsData;
+  }, [positionsData]);
+
+  const filteredPositions = useMemo(() => {
+    return positions.filter((p) => {
+      if (filter === "active") return !p.market.isResolved;
+      if (filter === "resolved") return p.market.isResolved;
+      return true;
+    });
+  }, [positions, filter]);
+
+  // Calculate portfolio stats
+  const { totalValue, totalInvested, claimableWinnings } = useMemo(() => {
+    let value = 0;
+    let invested = 0;
+    let claimable = 0;
+
+    for (const pos of positions) {
+      const yesValue = pos.yesBalance * (pos.market.noOdds / 100);
+      const noValue = pos.noBalance * (pos.market.yesOdds / 100);
+      value += yesValue + noValue;
+      invested += pos.yesBalance + pos.noBalance;
+
+      if (pos.market.isResolved && pos.market.outcome !== null) {
+        if (pos.market.outcome && pos.yesBalance > 0) {
+          claimable += pos.yesBalance;
+        } else if (!pos.market.outcome && pos.noBalance > 0) {
+          claimable += pos.noBalance;
+        }
+      }
     }
 
-    // TODO: Fetch positions from chain
-    setIsLoading(true);
-    setTimeout(() => {
-      setPositions(mockPositions);
-      setIsLoading(false);
-    }, 500);
-  }, [connected, publicKey]);
+    return { totalValue: value, totalInvested: invested, claimableWinnings: claimable };
+  }, [positions]);
 
-  const filteredPositions = positions.filter((p) => {
-    if (filter === "active") return !p.resolved;
-    if (filter === "resolved") return p.resolved;
-    return true;
-  });
-
-  const totalValue = positions.reduce(
-    (sum, p) => sum + p.shares * p.currentPrice,
-    0
-  );
-  const totalInvested = positions.reduce((sum, p) => sum + p.totalInvested, 0);
   const totalPnL = totalValue - totalInvested;
-  const claimableWinnings = positions
-    .filter((p) => p.resolved && p.outcome === (p.side === "yes"))
-    .reduce((sum, p) => sum + p.potentialPayout, 0);
+
+  const handleClaimAll = async () => {
+    for (const pos of positions) {
+      if (pos.market.isResolved && pos.market.outcome !== null) {
+        const winningBalance = pos.market.outcome ? pos.yesBalance : pos.noBalance;
+        if (winningBalance > 0) {
+          await redeem({ marketAddress: pos.marketAddress, amount: winningBalance });
+        }
+      }
+    }
+    refetch();
+  };
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -167,13 +139,13 @@ export default function PortfolioPage() {
               <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
                 <p className="text-gray-400 text-sm">Portfolio Value</p>
                 <p className="text-3xl font-bold text-white mt-1">
-                  {totalValue.toFixed(2)} SOL
+                  {formatPoolAmount(totalValue)} SOL
                 </p>
               </div>
               <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
                 <p className="text-gray-400 text-sm">Total Invested</p>
                 <p className="text-3xl font-bold text-white mt-1">
-                  {totalInvested.toFixed(2)} SOL
+                  {formatPoolAmount(totalInvested)} SOL
                 </p>
               </div>
               <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
@@ -182,17 +154,21 @@ export default function PortfolioPage() {
                   className={`text-3xl font-bold mt-1 ${totalPnL >= 0 ? "text-green-400" : "text-red-400"}`}
                 >
                   {totalPnL >= 0 ? "+" : ""}
-                  {totalPnL.toFixed(2)} SOL
+                  {formatPoolAmount(totalPnL)} SOL
                 </p>
               </div>
               <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
                 <p className="text-gray-400 text-sm">Claimable Winnings</p>
                 <p className="text-3xl font-bold text-purple-400 mt-1">
-                  {claimableWinnings.toFixed(2)} SOL
+                  {formatPoolAmount(claimableWinnings)} SOL
                 </p>
                 {claimableWinnings > 0 && (
-                  <button className="mt-2 w-full py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors">
-                    Claim All
+                  <button
+                    onClick={handleClaimAll}
+                    disabled={isRedeeming}
+                    className="mt-2 w-full py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-600/50 text-white text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed"
+                  >
+                    {isRedeeming ? "Claiming..." : "Claim All"}
                   </button>
                 )}
               </div>
@@ -261,28 +237,31 @@ export default function PortfolioPage() {
                     </thead>
                     <tbody>
                       {filteredPositions.map((position) => {
-                        const pnl =
-                          position.shares * position.currentPrice -
-                          position.totalInvested;
-                        const pnlPercent =
-                          (pnl / position.totalInvested) * 100;
-                        const isWinner =
-                          position.resolved &&
-                          position.outcome === (position.side === "yes");
+                        const hasYes = position.yesBalance > 0;
+                        const hasNo = position.noBalance > 0;
+                        const totalShares = position.yesBalance + position.noBalance;
+                        const estimatedValue = position.yesValue + position.noValue;
+                        const pnl = estimatedValue - totalShares;
+                        const pnlPercent = totalShares > 0 ? (pnl / totalShares) * 100 : 0;
+
+                        const isWinner = position.market.isResolved && position.market.outcome !== null && (
+                          (position.market.outcome && hasYes) ||
+                          (!position.market.outcome && hasNo)
+                        );
 
                         return (
                           <tr
-                            key={`${position.marketId}-${position.side}`}
+                            key={position.marketAddress}
                             className="border-b border-gray-700 last:border-0"
                           >
                             <td className="px-6 py-4">
                               <Link
-                                href={`/market/${position.marketId}`}
+                                href={`/market/${position.marketAddress}`}
                                 className="text-white hover:text-purple-400 transition-colors line-clamp-1"
                               >
-                                {position.question}
+                                {position.market.title}
                               </Link>
-                              {position.resolved && (
+                              {position.market.isResolved && (
                                 <span
                                   className={`text-xs px-2 py-0.5 rounded-full ml-2 ${
                                     isWinner
@@ -295,24 +274,28 @@ export default function PortfolioPage() {
                               )}
                             </td>
                             <td className="px-6 py-4">
-                              <span
-                                className={`px-3 py-1 rounded-full text-sm font-medium ${
-                                  position.side === "yes"
-                                    ? "bg-green-500/20 text-green-400"
-                                    : "bg-red-500/20 text-red-400"
-                                }`}
-                              >
-                                {position.side.toUpperCase()}
-                              </span>
+                              <div className="flex gap-2">
+                                {hasYes && (
+                                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-500/20 text-green-400">
+                                    YES
+                                  </span>
+                                )}
+                                {hasNo && (
+                                  <span className="px-3 py-1 rounded-full text-sm font-medium bg-red-500/20 text-red-400">
+                                    NO
+                                  </span>
+                                )}
+                              </div>
                             </td>
                             <td className="px-6 py-4 text-right text-white">
-                              {position.shares.toFixed(2)}
+                              {formatPoolAmount(totalShares)}
                             </td>
                             <td className="px-6 py-4 text-right text-white">
-                              {(position.avgPrice * 100).toFixed(1)}%
+                              -
                             </td>
                             <td className="px-6 py-4 text-right text-white">
-                              {(position.currentPrice * 100).toFixed(1)}%
+                              {hasYes && <div>{position.market.yesOdds.toFixed(1)}%</div>}
+                              {hasNo && <div>{position.market.noOdds.toFixed(1)}%</div>}
                             </td>
                             <td className="px-6 py-4 text-right">
                               <span
@@ -321,7 +304,7 @@ export default function PortfolioPage() {
                                 }
                               >
                                 {pnl >= 0 ? "+" : ""}
-                                {pnl.toFixed(2)} SOL
+                                {formatPoolAmount(pnl)} SOL
                               </span>
                               <span
                                 className={`text-sm ml-1 ${pnlPercent >= 0 ? "text-green-400" : "text-red-400"}`}
@@ -331,13 +314,22 @@ export default function PortfolioPage() {
                               </span>
                             </td>
                             <td className="px-6 py-4 text-right">
-                              {position.resolved && isWinner ? (
-                                <button className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-lg transition-colors">
-                                  Claim
+                              {position.market.isResolved && isWinner ? (
+                                <button
+                                  onClick={() => {
+                                    const winningBalance = position.market.outcome
+                                      ? position.yesBalance
+                                      : position.noBalance;
+                                    redeem({ marketAddress: position.marketAddress, amount: winningBalance });
+                                  }}
+                                  disabled={isRedeeming}
+                                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-600/50 text-white text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed"
+                                >
+                                  {isRedeeming ? "..." : "Claim"}
                                 </button>
-                              ) : !position.resolved ? (
+                              ) : !position.market.isResolved ? (
                                 <Link
-                                  href={`/market/${position.marketId}`}
+                                  href={`/market/${position.marketAddress}`}
                                   className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-colors inline-block"
                                 >
                                   Trade

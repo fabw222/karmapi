@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("8oErexD9Jgq6CfZvqGToAorLk1EHcdvKnNpcmfTen1XU");
+declare_id!("BzoHHkUdTgkEqwQj5uDqkwKfgSW65QCL4GzGCafBJCz8");
 
 /// DEPRECATED: This program is no longer used.
 /// Settlement and redeem instructions have been moved to market-factory program

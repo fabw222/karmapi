@@ -4,26 +4,28 @@ import { FC, useState, useCallback } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { usePlaceBet } from "@/hooks/usePlaceBet";
 
 interface BetPanelProps {
-  marketId: string;
+  marketAddress: string;
+  betTokenMint: string;
   yesPool: number;
   noPool: number;
   onBetPlaced?: () => void;
 }
 
 export const BetPanel: FC<BetPanelProps> = ({
-  marketId,
+  marketAddress,
+  betTokenMint,
   yesPool,
   noPool,
   onBetPlaced,
 }) => {
   const { publicKey, connected } = useWallet();
   const { connection } = useConnection();
+  const { placeBet, isLoading, error, reset } = usePlaceBet();
   const [selectedSide, setSelectedSide] = useState<"yes" | "no">("yes");
   const [amount, setAmount] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const totalPool = yesPool + noPool;
   const currentOdds =
@@ -57,38 +59,26 @@ export const BetPanel: FC<BetPanelProps> = ({
 
   const handlePlaceBet = async () => {
     if (!connected || !publicKey) {
-      setError("Please connect your wallet");
       return;
     }
 
     const betAmount = parseFloat(amount);
     if (isNaN(betAmount) || betAmount <= 0) {
-      setError("Please enter a valid amount");
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    reset();
 
-    try {
-      // TODO: Implement actual betting transaction
-      // This will call the placeBet instruction on the program
-      console.log("Placing bet:", {
-        marketId,
-        side: selectedSide,
-        amount: betAmount,
-      });
+    const result = await placeBet({
+      marketAddress,
+      betTokenMint,
+      amount: Math.floor(betAmount * LAMPORTS_PER_SOL),
+      side: selectedSide === "yes",
+    });
 
-      // Simulate transaction delay
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-
+    if (result) {
       setAmount("");
       onBetPlaced?.();
-    } catch (err) {
-      console.error("Error placing bet:", err);
-      setError("Failed to place bet. Please try again.");
-    } finally {
-      setIsLoading(false);
     }
   };
 

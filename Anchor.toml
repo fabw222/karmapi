@@ -7,16 +7,16 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-market_factory = "AQR7DVzsy1dKM3TdRqLMbzAb5waubBJYdXd9BGuCtVpR"
-settlement = "8oErexD9Jgq6CfZvqGToAorLk1EHcdvKnNpcmfTen1XU"
+market_factory = "CCLkxLFFCiBW57nphnjr2QMEMTahwL77JQNRq57VB932"
+settlement = "BzoHHkUdTgkEqwQj5uDqkwKfgSW65QCL4GzGCafBJCz8"
 
 [programs.devnet]
-market_factory = "AQR7DVzsy1dKM3TdRqLMbzAb5waubBJYdXd9BGuCtVpR"
-settlement = "8oErexD9Jgq6CfZvqGToAorLk1EHcdvKnNpcmfTen1XU"
+market_factory = "CCLkxLFFCiBW57nphnjr2QMEMTahwL77JQNRq57VB932"
+settlement = "BzoHHkUdTgkEqwQj5uDqkwKfgSW65QCL4GzGCafBJCz8"
 
 [programs.mainnet]
-market_factory = "AQR7DVzsy1dKM3TdRqLMbzAb5waubBJYdXd9BGuCtVpR"
-settlement = "8oErexD9Jgq6CfZvqGToAorLk1EHcdvKnNpcmfTen1XU"
+market_factory = "CCLkxLFFCiBW57nphnjr2QMEMTahwL77JQNRq57VB932"
+settlement = "BzoHHkUdTgkEqwQj5uDqkwKfgSW65QCL4GzGCafBJCz8"
 
 [registry]
 url = "https://api.apr.dev"
@@ -26,7 +26,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/*.bankrun.ts"
 
 [test]
 startup_wait = 60000

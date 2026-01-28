@@ -1,108 +1,48 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { MarketCard } from "@/components/MarketCard";
-
-// Mock data for markets - will be replaced with actual data from chain
-const mockMarkets = [
-  {
-    id: "market_1",
-    question: "Will Bitcoin reach $100,000 by end of 2024?",
-    description:
-      "This market resolves YES if Bitcoin (BTC) price reaches or exceeds $100,000 USD on any major exchange before December 31, 2024 11:59 PM UTC.",
-    yesPool: 5_000_000_000, // 5 SOL in lamports
-    noPool: 3_000_000_000, // 3 SOL in lamports
-    endTime: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60, // 30 days from now
-    resolved: false,
-  },
-  {
-    id: "market_2",
-    question: "Will Solana process over 100,000 TPS in 2024?",
-    description:
-      "This market resolves YES if Solana mainnet demonstrates sustained throughput of 100,000 transactions per second for at least 1 hour, as verified by official Solana metrics.",
-    yesPool: 2_000_000_000, // 2 SOL
-    noPool: 8_000_000_000, // 8 SOL
-    endTime: Math.floor(Date.now() / 1000) + 60 * 24 * 60 * 60, // 60 days from now
-    resolved: false,
-  },
-  {
-    id: "market_3",
-    question: "Will there be a US spot ETH ETF by Q1 2025?",
-    description:
-      "This market resolves YES if the SEC approves at least one spot Ethereum ETF for trading in the United States before March 31, 2025.",
-    yesPool: 10_000_000_000, // 10 SOL
-    noPool: 5_000_000_000, // 5 SOL
-    endTime: Math.floor(Date.now() / 1000) + 90 * 24 * 60 * 60, // 90 days from now
-    resolved: false,
-  },
-  {
-    id: "market_4",
-    question: "Will OpenAI release GPT-5 in 2024?",
-    description:
-      "This market resolves YES if OpenAI publicly announces and releases GPT-5 (or equivalent successor model) before December 31, 2024.",
-    yesPool: 1_500_000_000, // 1.5 SOL
-    noPool: 4_500_000_000, // 4.5 SOL
-    endTime: Math.floor(Date.now() / 1000) + 45 * 24 * 60 * 60, // 45 days from now
-    resolved: false,
-  },
-  {
-    id: "market_5",
-    question: "Will ETH flip BTC in market cap by 2025?",
-    description:
-      "This market resolves YES if Ethereum's total market capitalization exceeds Bitcoin's at any point before January 1, 2026, as measured by CoinGecko.",
-    yesPool: 500_000_000, // 0.5 SOL
-    noPool: 9_500_000_000, // 9.5 SOL
-    endTime: Math.floor(Date.now() / 1000) + 365 * 24 * 60 * 60, // 1 year from now
-    resolved: false,
-  },
-  {
-    id: "market_6",
-    question: "Resolved: Did Fed cut rates in Sept 2024?",
-    description:
-      "This market resolved YES as the Federal Reserve cut interest rates by 50 basis points in September 2024.",
-    yesPool: 7_000_000_000, // 7 SOL
-    noPool: 3_000_000_000, // 3 SOL
-    endTime: Math.floor(Date.now() / 1000) - 30 * 24 * 60 * 60, // 30 days ago
-    resolved: true,
-    outcome: true,
-  },
-];
+import { useMarkets } from "@/hooks/useMarkets";
+import { MarketUI, formatPoolAmount } from "@/types/market";
 
 type SortOption = "volume" | "ending" | "newest";
 
 export default function Home() {
-  const [markets, setMarkets] = useState(mockMarkets);
+  const { data: marketsData, isLoading, error } = useMarkets();
   const [sortBy, setSortBy] = useState<SortOption>("volume");
   const [showResolved, setShowResolved] = useState(false);
 
-  useEffect(() => {
-    // TODO: Fetch markets from chain
-    let sortedMarkets = [...mockMarkets];
+  const markets = useMemo(() => {
+    if (!marketsData) return [];
+
+    let filtered = [...marketsData];
 
     // Filter resolved markets
     if (!showResolved) {
-      sortedMarkets = sortedMarkets.filter((m) => !m.resolved);
+      filtered = filtered.filter((m) => !m.isResolved);
     }
 
     // Sort markets
     switch (sortBy) {
       case "volume":
-        sortedMarkets.sort(
-          (a, b) => b.yesPool + b.noPool - (a.yesPool + a.noPool)
-        );
+        filtered.sort((a, b) => b.totalVolume - a.totalVolume);
         break;
       case "ending":
-        sortedMarkets.sort((a, b) => a.endTime - b.endTime);
+        filtered.sort((a, b) => a.expiryTimestamp - b.expiryTimestamp);
         break;
       case "newest":
-        sortedMarkets.sort((a, b) => b.endTime - a.endTime);
+        filtered.sort((a, b) => b.expiryTimestamp - a.expiryTimestamp);
         break;
     }
 
-    setMarkets(sortedMarkets);
-  }, [sortBy, showResolved]);
+    return filtered;
+  }, [marketsData, sortBy, showResolved]);
+
+  // Calculate stats
+  const totalVolume = marketsData?.reduce((sum, m) => sum + m.totalVolume, 0) || 0;
+  const activeMarketsCount = marketsData?.filter((m) => !m.isResolved).length || 0;
 
   return (
     <div className="min-h-screen bg-gray-900">
@@ -170,17 +110,21 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
             <p className="text-gray-400 text-sm">Total Volume</p>
-            <p className="text-3xl font-bold text-white mt-1">42.5 SOL</p>
+            <p className="text-3xl font-bold text-white mt-1">
+              {isLoading ? "..." : formatPoolAmount(totalVolume)} SOL
+            </p>
           </div>
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
             <p className="text-gray-400 text-sm">Active Markets</p>
             <p className="text-3xl font-bold text-white mt-1">
-              {mockMarkets.filter((m) => !m.resolved).length}
+              {isLoading ? "..." : activeMarketsCount}
             </p>
           </div>
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
-            <p className="text-gray-400 text-sm">Total Traders</p>
-            <p className="text-3xl font-bold text-white mt-1">127</p>
+            <p className="text-gray-400 text-sm">Total Markets</p>
+            <p className="text-3xl font-bold text-white mt-1">
+              {isLoading ? "..." : marketsData?.length || 0}
+            </p>
           </div>
         </div>
 
@@ -210,7 +154,26 @@ export default function Home() {
             </div>
           </div>
 
-          {markets.length === 0 ? (
+          {isLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="bg-gray-800 rounded-xl p-6 border border-gray-700 animate-pulse"
+                >
+                  <div className="h-6 bg-gray-700 rounded w-3/4 mb-4"></div>
+                  <div className="h-4 bg-gray-700 rounded w-1/2 mb-2"></div>
+                  <div className="h-4 bg-gray-700 rounded w-1/3"></div>
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <div className="text-center py-12 bg-gray-800 rounded-xl border border-gray-700">
+              <p className="text-red-400">
+                Error loading markets. Please try again.
+              </p>
+            </div>
+          ) : markets.length === 0 ? (
             <div className="text-center py-12 bg-gray-800 rounded-xl border border-gray-700">
               <p className="text-gray-400">
                 No markets found. Create one to get started!
@@ -225,7 +188,7 @@ export default function Home() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {markets.map((market) => (
-                <MarketCard key={market.id} market={market} />
+                <MarketCard key={market.address} market={market} />
               ))}
             </div>
           )}

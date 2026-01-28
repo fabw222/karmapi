@@ -1,78 +1,59 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { OddsDisplay } from "@/components/OddsDisplay";
 import { BetPanel } from "@/components/BetPanel";
-
-// Mock market data - will be replaced with actual data from chain
-const mockMarketData = {
-  market_1: {
-    id: "market_1",
-    question: "Will Bitcoin reach $100,000 by end of 2024?",
-    description:
-      "This market resolves YES if Bitcoin (BTC) price reaches or exceeds $100,000 USD on any major exchange before December 31, 2024 11:59 PM UTC. Major exchanges include Binance, Coinbase, Kraken, and similar tier-1 platforms.",
-    yesPool: 5_000_000_000,
-    noPool: 3_000_000_000,
-    endTime: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
-    resolved: false,
-    oracle: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-    creator: "9WzDXwBbmPEi5bGXYTziH9Y6xDzFZQeNBrLqHmWQhUqS",
-  },
-  market_2: {
-    id: "market_2",
-    question: "Will Solana process over 100,000 TPS in 2024?",
-    description:
-      "This market resolves YES if Solana mainnet demonstrates sustained throughput of 100,000 transactions per second for at least 1 hour, as verified by official Solana metrics.",
-    yesPool: 2_000_000_000,
-    noPool: 8_000_000_000,
-    endTime: Math.floor(Date.now() / 1000) + 60 * 24 * 60 * 60,
-    resolved: false,
-    oracle: "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-    creator: "9WzDXwBbmPEi5bGXYTziH9Y6xDzFZQeNBrLqHmWQhUqS",
-  },
-};
-
-interface MarketData {
-  id: string;
-  question: string;
-  description: string;
-  yesPool: number;
-  noPool: number;
-  endTime: number;
-  resolved: boolean;
-  outcome?: boolean;
-  oracle: string;
-  creator: string;
-}
+import { useMarket } from "@/hooks/useMarket";
+import { useSettleMarket } from "@/hooks/useSettleMarket";
+import { useRedeem } from "@/hooks/useRedeem";
+import { useUserPosition } from "@/hooks/useUserPositions";
+import { formatPoolAmount, formatTimeRemaining } from "@/types/market";
 
 export default function MarketPage() {
   const params = useParams();
   const marketId = params.id as string;
-  const [market, setMarket] = useState<MarketData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    // TODO: Fetch market from chain
-    setIsLoading(true);
-
-    // Simulate loading
-    setTimeout(() => {
-      const marketData =
-        mockMarketData[marketId as keyof typeof mockMarketData];
-      if (marketData) {
-        setMarket(marketData);
-      }
-      setIsLoading(false);
-    }, 500);
-  }, [marketId]);
+  const { publicKey } = useWallet();
+  const { data: market, isLoading, refetch } = useMarket(marketId);
+  const { data: userPosition } = useUserPosition(marketId);
+  const { settleMarket, isLoading: isSettling, error: settleError } = useSettleMarket();
+  const { redeem, isLoading: isRedeeming, error: redeemError } = useRedeem();
+  const [settleOutcome, setSettleOutcome] = useState<boolean>(true);
 
   const handleBetPlaced = () => {
-    // Refresh market data after bet
-    console.log("Bet placed, refreshing market data...");
+    refetch();
   };
+
+  const handleSettle = async (outcome: boolean) => {
+    const result = await settleMarket({ marketAddress: marketId, outcome });
+    if (result) {
+      refetch();
+    }
+  };
+
+  const handleRedeem = async () => {
+    if (!userPosition) return;
+
+    const winningBalance = market?.outcome
+      ? userPosition.yesBalance
+      : userPosition.noBalance;
+
+    if (winningBalance > 0) {
+      const result = await redeem({ marketAddress: marketId, amount: winningBalance });
+      if (result) {
+        refetch();
+      }
+    }
+  };
+
+  const isCreator = publicKey && market && publicKey.toBase58() === market.creator;
+  const hasWinningPosition = userPosition && market?.isResolved && market.outcome !== null && (
+    (market.outcome && userPosition.yesBalance > 0) ||
+    (!market.outcome && userPosition.noBalance > 0)
+  );
 
   if (isLoading) {
     return (
@@ -120,15 +101,6 @@ export default function MarketPage() {
     );
   }
 
-  const timeLeft = market.endTime * 1000 - Date.now();
-  const daysLeft = Math.max(0, Math.floor(timeLeft / (1000 * 60 * 60 * 24)));
-  const hoursLeft = Math.max(
-    0,
-    Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-  );
-  const isExpired = timeLeft <= 0;
-  const totalPool = market.yesPool + market.noPool;
-
   return (
     <div className="min-h-screen bg-gray-900">
       <Header />
@@ -147,8 +119,8 @@ export default function MarketPage() {
         {/* Market Header */}
         <div className="mb-8">
           <div className="flex items-start justify-between gap-4 mb-4">
-            <h1 className="text-3xl font-bold text-white">{market.question}</h1>
-            {market.resolved ? (
+            <h1 className="text-3xl font-bold text-white">{market.title}</h1>
+            {market.isResolved ? (
               <span
                 className={`px-4 py-2 rounded-full text-sm font-medium ${
                   market.outcome
@@ -158,7 +130,7 @@ export default function MarketPage() {
               >
                 Resolved: {market.outcome ? "YES" : "NO"}
               </span>
-            ) : isExpired ? (
+            ) : market.isExpired ? (
               <span className="px-4 py-2 rounded-full text-sm font-medium bg-yellow-500/20 text-yellow-400">
                 Pending Resolution
               </span>
@@ -191,23 +163,23 @@ export default function MarketPage() {
                 <div className="flex justify-between py-3 border-b border-gray-700">
                   <span className="text-gray-400">Total Volume</span>
                   <span className="text-white font-medium">
-                    {(totalPool / 1e9).toFixed(2)} SOL
+                    {formatPoolAmount(market.totalVolume)} SOL
                   </span>
                 </div>
                 <div className="flex justify-between py-3 border-b border-gray-700">
                   <span className="text-gray-400">Time Remaining</span>
                   <span className="text-white font-medium">
-                    {market.resolved
+                    {market.isResolved
                       ? "Resolved"
-                      : isExpired
+                      : market.isExpired
                         ? "Ended"
-                        : `${daysLeft}d ${hoursLeft}h`}
+                        : formatTimeRemaining(market.timeRemaining)}
                   </span>
                 </div>
                 <div className="flex justify-between py-3 border-b border-gray-700">
                   <span className="text-gray-400">End Date</span>
                   <span className="text-white font-medium">
-                    {new Date(market.endTime * 1000).toLocaleDateString(
+                    {new Date(market.expiryTimestamp * 1000).toLocaleDateString(
                       "en-US",
                       {
                         year: "numeric",
@@ -217,12 +189,6 @@ export default function MarketPage() {
                         minute: "2-digit",
                       }
                     )}
-                  </span>
-                </div>
-                <div className="flex justify-between py-3 border-b border-gray-700">
-                  <span className="text-gray-400">Oracle</span>
-                  <span className="text-white font-mono text-sm">
-                    {market.oracle.slice(0, 4)}...{market.oracle.slice(-4)}
                   </span>
                 </div>
                 <div className="flex justify-between py-3">
@@ -266,8 +232,8 @@ export default function MarketPage() {
           </div>
 
           {/* Right Column - Bet Panel */}
-          <div className="lg:col-span-1">
-            {market.resolved ? (
+          <div className="lg:col-span-1 space-y-6">
+            {market.isResolved ? (
               <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
                 <h3 className="text-xl font-bold text-white mb-4">
                   Market Resolved
@@ -286,28 +252,97 @@ export default function MarketPage() {
                     This market has been resolved
                   </p>
                 </div>
-                <button className="w-full mt-6 py-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold text-white transition-all">
-                  Claim Winnings
-                </button>
+                {hasWinningPosition && (
+                  <>
+                    {redeemError && (
+                      <div className="mt-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
+                        {redeemError}
+                      </div>
+                    )}
+                    <button
+                      onClick={handleRedeem}
+                      disabled={isRedeeming}
+                      className="w-full mt-6 py-4 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-600/50 rounded-lg font-semibold text-white transition-all disabled:cursor-not-allowed"
+                    >
+                      {isRedeeming ? "Claiming..." : "Claim Winnings"}
+                    </button>
+                  </>
+                )}
               </div>
-            ) : isExpired ? (
+            ) : market.isExpired ? (
               <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
                 <h3 className="text-xl font-bold text-white mb-4">
                   Market Ended
                 </h3>
                 <div className="text-center py-8 rounded-lg bg-yellow-500/20">
                   <p className="text-yellow-400">
-                    Waiting for oracle to resolve this market
+                    Waiting for creator to resolve this market
                   </p>
                 </div>
+                {isCreator && (
+                  <div className="mt-6 space-y-4">
+                    <p className="text-gray-400 text-sm">
+                      As the market creator, you can settle this market:
+                    </p>
+                    {settleError && (
+                      <div className="p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
+                        {settleError}
+                      </div>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => handleSettle(true)}
+                        disabled={isSettling}
+                        className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 rounded-lg font-semibold text-white transition-all disabled:cursor-not-allowed"
+                      >
+                        {isSettling ? "..." : "Settle YES"}
+                      </button>
+                      <button
+                        onClick={() => handleSettle(false)}
+                        disabled={isSettling}
+                        className="flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 rounded-lg font-semibold text-white transition-all disabled:cursor-not-allowed"
+                      >
+                        {isSettling ? "..." : "Settle NO"}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <BetPanel
-                marketId={market.id}
+                marketAddress={market.address}
+                betTokenMint={market.betTokenMint}
                 yesPool={market.yesPool}
                 noPool={market.noPool}
                 onBetPlaced={handleBetPlaced}
               />
+            )}
+
+            {/* User Position */}
+            {userPosition && (userPosition.yesBalance > 0 || userPosition.noBalance > 0) && (
+              <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+                <h3 className="text-lg font-bold text-white mb-4">
+                  Your Position
+                </h3>
+                <div className="space-y-3">
+                  {userPosition.yesBalance > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-green-400">YES Tokens</span>
+                      <span className="text-white font-medium">
+                        {formatPoolAmount(userPosition.yesBalance)}
+                      </span>
+                    </div>
+                  )}
+                  {userPosition.noBalance > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-red-400">NO Tokens</span>
+                      <span className="text-white font-medium">
+                        {formatPoolAmount(userPosition.noBalance)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>

@@ -4,6 +4,7 @@ import { FC, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useRouter } from "next/navigation";
+import { useCreateMarket } from "@/hooks/useCreateMarket";
 
 interface CreateMarketFormProps {
   onMarketCreated?: (marketId: string) => void;
@@ -14,14 +15,12 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
 }) => {
   const { publicKey, connected } = useWallet();
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { createMarket, isLoading, error, reset } = useCreateMarket();
 
   const [formData, setFormData] = useState({
     question: "",
     description: "",
     duration: "7", // days
-    oracleAddress: "",
   });
 
   const handleChange = (
@@ -33,26 +32,28 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const [formError, setFormError] = useState<string | null>(null);
+
   const validateForm = (): boolean => {
     if (!formData.question.trim()) {
-      setError("Question is required");
+      setFormError("Question is required");
       return false;
     }
-    if (formData.question.length > 200) {
-      setError("Question must be less than 200 characters");
+    if (formData.question.length > 128) {
+      setFormError("Question must be less than 128 characters");
       return false;
     }
     if (!formData.description.trim()) {
-      setError("Description is required");
+      setFormError("Description is required");
       return false;
     }
-    if (formData.description.length > 500) {
-      setError("Description must be less than 500 characters");
+    if (formData.description.length > 512) {
+      setFormError("Description must be less than 512 characters");
       return false;
     }
     const duration = parseInt(formData.duration);
     if (isNaN(duration) || duration < 1 || duration > 365) {
-      setError("Duration must be between 1 and 365 days");
+      setFormError("Duration must be between 1 and 365 days");
       return false;
     }
     return true;
@@ -60,9 +61,11 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
+    reset();
 
     if (!connected || !publicKey) {
-      setError("Please connect your wallet");
+      setFormError("Please connect your wallet");
       return;
     }
 
@@ -70,27 +73,15 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    const result = await createMarket({
+      title: formData.question.trim(),
+      description: formData.description.trim(),
+      durationDays: parseInt(formData.duration),
+    });
 
-    try {
-      // TODO: Implement actual market creation transaction
-      // This will call the initializeMarket instruction on the program
-      console.log("Creating market:", formData);
-
-      // Simulate transaction delay
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Generate a mock market ID for now
-      const mockMarketId = `market_${Date.now()}`;
-
-      onMarketCreated?.(mockMarketId);
-      router.push(`/market/${mockMarketId}`);
-    } catch (err) {
-      console.error("Error creating market:", err);
-      setError("Failed to create market. Please try again.");
-    } finally {
-      setIsLoading(false);
+    if (result) {
+      onMarketCreated?.(result.marketAddress);
+      router.push(`/market/${result.marketAddress}`);
     }
   };
 
@@ -136,10 +127,10 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
               onChange={handleChange}
               placeholder="Will Bitcoin reach $100,000 by end of 2024?"
               className="w-full bg-gray-700 border border-gray-600 rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
-              maxLength={200}
+              maxLength={128}
             />
             <p className="text-xs text-gray-500 mt-1">
-              {formData.question.length}/200 characters
+              {formData.question.length}/128 characters
             </p>
           </div>
 
@@ -159,10 +150,10 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
               placeholder="Provide clear resolution criteria. What conditions must be met for YES to win?"
               rows={4}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none"
-              maxLength={500}
+              maxLength={512}
             />
             <p className="text-xs text-gray-500 mt-1">
-              {formData.description.length}/500 characters
+              {formData.description.length}/512 characters
             </p>
           </div>
 
@@ -189,28 +180,6 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
             </select>
           </div>
 
-          {/* Oracle Address (Optional) */}
-          <div>
-            <label
-              htmlFor="oracleAddress"
-              className="block text-sm font-medium text-gray-300 mb-2"
-            >
-              Oracle Address (Optional)
-            </label>
-            <input
-              type="text"
-              id="oracleAddress"
-              name="oracleAddress"
-              value={formData.oracleAddress}
-              onChange={handleChange}
-              placeholder="Leave empty to use your wallet as oracle"
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 font-mono text-sm"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              The oracle address will resolve the market outcome
-            </p>
-          </div>
-
           {/* Market Creation Fee Info */}
           <div className="bg-gray-900 rounded-lg p-4">
             <h4 className="text-sm font-medium text-gray-300 mb-2">
@@ -228,9 +197,9 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
             </div>
           </div>
 
-          {error && (
+          {(formError || error) && (
             <div className="bg-red-500/20 border border-red-500 rounded-lg p-3 text-red-400 text-sm">
-              {error}
+              {formError || error}
             </div>
           )}
 
