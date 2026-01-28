@@ -1,6 +1,5 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { Settlement } from "../target/types/settlement";
 import { MarketFactory } from "../target/types/market_factory";
 import { Keypair, PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
@@ -16,7 +15,6 @@ describe("settlement", () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
-  const settlementProgram = anchor.workspace.Settlement as Program<Settlement>;
   const factoryProgram = anchor.workspace.MarketFactory as Program<MarketFactory>;
 
   let betTokenMint: PublicKey;
@@ -90,7 +88,7 @@ describe("settlement", () => {
 
   describe("settle_market", () => {
     it("allows creator to settle with YES outcome", async () => {
-      await settlementProgram.methods
+      await factoryProgram.methods
         .settleMarket(true) // YES wins
         .accounts({
           creator: creator.publicKey,
@@ -125,8 +123,8 @@ describe("settlement", () => {
       );
       await provider.connection.confirmTransaction(sig);
 
-      // Create a new market that expires in 1 second
-      const expiryTimestamp = new anchor.BN(Math.floor(Date.now() / 1000) + 1);
+      // Create a new market that expires in 5 seconds (enough time to place bet)
+      const expiryTimestamp = new anchor.BN(Math.floor(Date.now() / 1000) + 5);
 
       [redeemMarketPda] = PublicKey.findProgramAddressSync(
         [
@@ -219,11 +217,11 @@ describe("settlement", () => {
         .signers([redeemer])
         .rpc();
 
-      // Wait for market to expire
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait for market to expire (5 seconds + buffer)
+      await new Promise(resolve => setTimeout(resolve, 6000));
 
       // Settle market with YES outcome
-      await settlementProgram.methods
+      await factoryProgram.methods
         .settleMarket(true)
         .accounts({
           creator: creator.publicKey,
@@ -245,7 +243,7 @@ describe("settlement", () => {
       )).amount;
 
       // Redeem all YES tokens
-      await settlementProgram.methods
+      await factoryProgram.methods
         .redeem(new anchor.BN(yesBalance.toString()))
         .accounts({
           redeemer: redeemer.publicKey,
@@ -276,7 +274,7 @@ describe("settlement", () => {
 
     it("fails to redeem with wrong mint", async () => {
       try {
-        await settlementProgram.methods
+        await factoryProgram.methods
           .redeem(new anchor.BN(1))
           .accounts({
             redeemer: redeemer.publicKey,
@@ -292,6 +290,283 @@ describe("settlement", () => {
         expect.fail("Should have thrown an error");
       } catch (error: any) {
         expect(error.toString()).to.include("WrongMint");
+      }
+    });
+
+    it("fails to redeem with zero amount", async () => {
+      try {
+        await factoryProgram.methods
+          .redeem(new anchor.BN(0))
+          .accounts({
+            redeemer: redeemer.publicKey,
+            market: redeemMarketPda,
+            vault: redeemVault,
+            winningMint: redeemYesMint,
+            redeemerWinningAccount: redeemerYesAccount,
+            redeemerBetAccount: redeemerTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([redeemer])
+          .rpc();
+        expect.fail("Should have thrown an error");
+      } catch (error: any) {
+        expect(error.toString()).to.include("InvalidAmount");
+      }
+    });
+  });
+
+  describe("settle_market - error cases", () => {
+    let unsettledMarketPda: PublicKey;
+    let unsettledYesMint: PublicKey;
+    let unsettledNoMint: PublicKey;
+    let unsettledVault: PublicKey;
+    let longExpiryTimestamp: anchor.BN;
+    let unauthorizedUser: Keypair;
+
+    before(async () => {
+      unauthorizedUser = Keypair.generate();
+
+      // Airdrop SOL to unauthorized user
+      const sig = await provider.connection.requestAirdrop(
+        unauthorizedUser.publicKey,
+        10 * LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(sig);
+
+      // Create a market that expires in 30 days (won't expire during test)
+      longExpiryTimestamp = new anchor.BN(Math.floor(Date.now() / 1000) + 86400 * 30);
+
+      [unsettledMarketPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("market"),
+          creator.publicKey.toBuffer(),
+          betTokenMint.toBuffer(),
+          longExpiryTimestamp.toArrayLike(Buffer, "le", 8),
+        ],
+        factoryProgram.programId
+      );
+
+      [unsettledYesMint] = PublicKey.findProgramAddressSync(
+        [Buffer.from("yes_mint"), unsettledMarketPda.toBuffer()],
+        factoryProgram.programId
+      );
+
+      [unsettledNoMint] = PublicKey.findProgramAddressSync(
+        [Buffer.from("no_mint"), unsettledMarketPda.toBuffer()],
+        factoryProgram.programId
+      );
+
+      [unsettledVault] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), unsettledMarketPda.toBuffer()],
+        factoryProgram.programId
+      );
+
+      await factoryProgram.methods
+        .createMarket("Long Expiry Market", "For testing settlement errors", longExpiryTimestamp)
+        .accounts({
+          creator: creator.publicKey,
+          market: unsettledMarketPda,
+          betTokenMint: betTokenMint,
+          yesMint: unsettledYesMint,
+          noMint: unsettledNoMint,
+          vault: unsettledVault,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([creator])
+        .rpc();
+    });
+
+    it("fails to settle when not market creator", async () => {
+      try {
+        await factoryProgram.methods
+          .settleMarket(true)
+          .accounts({
+            creator: unauthorizedUser.publicKey,
+            market: unsettledMarketPda,
+          })
+          .signers([unauthorizedUser])
+          .rpc();
+        expect.fail("Should have thrown an error");
+      } catch (error: any) {
+        expect(error.toString()).to.include("Unauthorized");
+      }
+    });
+
+    it("fails to settle before market expiry", async () => {
+      try {
+        await factoryProgram.methods
+          .settleMarket(true)
+          .accounts({
+            creator: creator.publicKey,
+            market: unsettledMarketPda,
+          })
+          .signers([creator])
+          .rpc();
+        expect.fail("Should have thrown an error");
+      } catch (error: any) {
+        expect(error.toString()).to.include("MarketNotExpired");
+      }
+    });
+
+    it("fails to settle an already settled market", async () => {
+      // Use the market from the first test that's already settled
+      try {
+        await factoryProgram.methods
+          .settleMarket(false)
+          .accounts({
+            creator: creator.publicKey,
+            market: marketPda, // This is the already settled market from the first test
+          })
+          .signers([creator])
+          .rpc();
+        expect.fail("Should have thrown an error");
+      } catch (error: any) {
+        expect(error.toString()).to.include("AlreadySettled");
+      }
+    });
+  });
+
+  describe("redeem - error cases", () => {
+    let openMarketPda: PublicKey;
+    let openYesMint: PublicKey;
+    let openNoMint: PublicKey;
+    let openVault: PublicKey;
+    let bettor: Keypair;
+    let bettorTokenAccount: PublicKey;
+    let bettorYesAccount: PublicKey;
+
+    before(async () => {
+      bettor = Keypair.generate();
+
+      // Airdrop SOL to bettor
+      const sig = await provider.connection.requestAirdrop(
+        bettor.publicKey,
+        10 * LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(sig);
+
+      // Create a market that won't expire during test
+      // Use 31 days offset (vs 30 days in settle_market tests) to avoid PDA collisions
+      const expiryTimestamp = new anchor.BN(Math.floor(Date.now() / 1000) + 86400 * 31);
+
+      [openMarketPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("market"),
+          creator.publicKey.toBuffer(),
+          betTokenMint.toBuffer(),
+          expiryTimestamp.toArrayLike(Buffer, "le", 8),
+        ],
+        factoryProgram.programId
+      );
+
+      [openYesMint] = PublicKey.findProgramAddressSync(
+        [Buffer.from("yes_mint"), openMarketPda.toBuffer()],
+        factoryProgram.programId
+      );
+
+      [openNoMint] = PublicKey.findProgramAddressSync(
+        [Buffer.from("no_mint"), openMarketPda.toBuffer()],
+        factoryProgram.programId
+      );
+
+      [openVault] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), openMarketPda.toBuffer()],
+        factoryProgram.programId
+      );
+
+      await factoryProgram.methods
+        .createMarket("Open Market for Redeem Test", "Testing redeem before settle", expiryTimestamp)
+        .accounts({
+          creator: creator.publicKey,
+          market: openMarketPda,
+          betTokenMint: betTokenMint,
+          yesMint: openYesMint,
+          noMint: openNoMint,
+          vault: openVault,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+        })
+        .signers([creator])
+        .rpc();
+
+      // Mint bet tokens to bettor
+      bettorTokenAccount = (await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        bettor,
+        betTokenMint,
+        bettor.publicKey
+      )).address;
+
+      await mintTo(
+        provider.connection,
+        creator,
+        betTokenMint,
+        bettorTokenAccount,
+        creator,
+        1000_000_000_000
+      );
+
+      // Create YES token account for bettor
+      bettorYesAccount = (await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        bettor,
+        openYesMint,
+        bettor.publicKey
+      )).address;
+
+      // Create NO token account for bettor (needed for place_bet)
+      await getOrCreateAssociatedTokenAccount(
+        provider.connection,
+        bettor,
+        openNoMint,
+        bettor.publicKey
+      );
+
+      // Place a bet to get some YES tokens
+      await factoryProgram.methods
+        .placeBet(new anchor.BN(100_000_000_000), true)
+        .accounts({
+          bettor: bettor.publicKey,
+          market: openMarketPda,
+          betTokenMint: betTokenMint,
+          yesMint: openYesMint,
+          noMint: openNoMint,
+          vault: openVault,
+          bettorTokenAccount: bettorTokenAccount,
+          bettorYesAccount: bettorYesAccount,
+          bettorNoAccount: (await getOrCreateAssociatedTokenAccount(
+            provider.connection,
+            bettor,
+            openNoMint,
+            bettor.publicKey
+          )).address,
+          tokenProgram: TOKEN_PROGRAM_ID,
+        })
+        .signers([bettor])
+        .rpc();
+    });
+
+    it("fails to redeem from unsettled market", async () => {
+      try {
+        await factoryProgram.methods
+          .redeem(new anchor.BN(50_000_000_000))
+          .accounts({
+            redeemer: bettor.publicKey,
+            market: openMarketPda,
+            vault: openVault,
+            winningMint: openYesMint,
+            redeemerWinningAccount: bettorYesAccount,
+            redeemerBetAccount: bettorTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+          })
+          .signers([bettor])
+          .rpc();
+        expect.fail("Should have thrown an error");
+      } catch (error: any) {
+        expect(error.toString()).to.include("NotSettled");
       }
     });
   });
