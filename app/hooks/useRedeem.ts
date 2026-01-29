@@ -1,9 +1,13 @@
 import { useState, useCallback } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, Transaction } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
+  NATIVE_MINT,
   getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createCloseAccountInstruction,
+  getAccount,
 } from "@solana/spl-token";
 import { BN } from "@coral-xyz/anchor";
 import { useQueryClient } from "@tanstack/react-query";
@@ -69,8 +73,27 @@ export function useRedeem() {
           publicKey
         );
 
-        // Call redeem instruction
-        const tx = await program.methods
+        const isWSOL = market.betTokenMint.equals(NATIVE_MINT);
+
+        // Build transaction with ATA creation if needed
+        const transaction = new Transaction();
+
+        // Check if bet token account exists, create if not
+        try {
+          await getAccount(connection, redeemerBetAccount);
+        } catch {
+          transaction.add(
+            createAssociatedTokenAccountInstruction(
+              publicKey,
+              redeemerBetAccount,
+              publicKey,
+              market.betTokenMint
+            )
+          );
+        }
+
+        // Add redeem instruction
+        const redeemIx = await program.methods
           .redeem(new BN(params.amount))
           .accountsStrict({
             redeemer: publicKey,
@@ -81,7 +104,23 @@ export function useRedeem() {
             redeemerBetAccount: redeemerBetAccount,
             tokenProgram: TOKEN_PROGRAM_ID,
           })
-          .rpc();
+          .instruction();
+
+        transaction.add(redeemIx);
+
+        // Close WSOL account to get native SOL back
+        if (isWSOL) {
+          transaction.add(
+            createCloseAccountInstruction(
+              redeemerBetAccount,
+              publicKey,
+              publicKey
+            )
+          );
+        }
+
+        // Send transaction
+        const tx = await program.provider.sendAndConfirm!(transaction);
 
         // Calculate expected payout (simplified - actual payout determined by contract)
         const yesPool = market.yesPool.toNumber();
@@ -108,7 +147,7 @@ export function useRedeem() {
         setIsLoading(false);
       }
     },
-    [program, publicKey, queryClient]
+    [connection, program, publicKey, queryClient]
   );
 
   const reset = useCallback(() => {
