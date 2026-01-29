@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import {
   LAMPORTS_PER_SOL,
@@ -37,6 +37,7 @@ export function useCreateMarket() {
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inFlightRef = useRef(false);
 
   const createMarket = useCallback(
     async (params: CreateMarketParams): Promise<CreateMarketResult | null> => {
@@ -45,6 +46,8 @@ export function useCreateMarket() {
         return null;
       }
 
+      if (inFlightRef.current) return null;
+      inFlightRef.current = true;
       setIsLoading(true);
       setError(null);
 
@@ -203,10 +206,27 @@ export function useCreateMarket() {
           errMessage.includes("already been processed") ||
           errMessage.includes("already processed");
         if (isAlreadyProcessed && marketPda) {
-          const accountInfo = await connection.getAccountInfo(marketPda, "confirmed");
-          if (accountInfo) {
-            await queryClient.invalidateQueries({ queryKey: ["markets"] });
-            return { marketAddress: marketPda.toBase58() };
+          const signature =
+            typeof (err as { signature?: unknown })?.signature === "string"
+              ? ((err as { signature?: string }).signature as string)
+              : undefined;
+
+          for (let attempt = 0; attempt < 10; attempt++) {
+            const accountInfo = await connection.getAccountInfo(marketPda, "processed");
+            if (accountInfo) {
+              await queryClient.invalidateQueries({ queryKey: ["markets"] });
+              return { marketAddress: marketPda.toBase58(), signature };
+            }
+            await new Promise((resolve) => setTimeout(resolve, 400));
+          }
+
+          if (signature) {
+            const statusResp = await connection.getSignatureStatuses([signature]);
+            const status = statusResp.value[0];
+            if (status && status.err == null) {
+              await queryClient.invalidateQueries({ queryKey: ["markets"] });
+              return { marketAddress: marketPda.toBase58(), signature };
+            }
           }
         }
 
@@ -216,6 +236,7 @@ export function useCreateMarket() {
         return null;
       } finally {
         setIsLoading(false);
+        inFlightRef.current = false;
       }
     },
     [program, publicKey, connection, queryClient]
