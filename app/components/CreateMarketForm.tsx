@@ -51,9 +51,9 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
       setFormError("Description must be less than 512 characters");
       return false;
     }
-    const duration = parseInt(formData.duration);
-    if (isNaN(duration) || duration < 1 || duration > 365) {
-      setFormError("Duration must be between 1 and 365 days");
+    const duration = parseFloat(formData.duration);
+    if (isNaN(duration) || duration <= 0 || duration > 365) {
+      setFormError("Duration must be greater than 0 and at most 365 days");
       return false;
     }
     return true;
@@ -61,6 +61,7 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     setFormError(null);
     reset();
 
@@ -76,7 +77,7 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
     const result = await createMarket({
       title: formData.question.trim(),
       description: formData.description.trim(),
-      durationDays: parseInt(formData.duration),
+      durationDays: parseFloat(formData.duration),
     });
 
     if (result) {
@@ -86,6 +87,7 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
   };
 
   const durationOptions = [
+    { value: "0.000694", label: "1 minute (test)" },
     { value: "1", label: "1 day" },
     { value: "3", label: "3 days" },
     { value: "7", label: "1 week" },
