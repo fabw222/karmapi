@@ -133,6 +133,7 @@ export function useRedeem() {
         await queryClient.invalidateQueries({ queryKey: ["market", params.marketAddress] });
         await queryClient.invalidateQueries({ queryKey: ["userPosition", params.marketAddress] });
         await queryClient.invalidateQueries({ queryKey: ["userPositions"] });
+        await queryClient.invalidateQueries({ queryKey: ["markets"] });
 
         return {
           signature: tx,
