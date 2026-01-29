@@ -48,7 +48,11 @@ export default function PortfolioPage() {
       }
     }
 
-    return { totalValue: value, totalInvested: invested, claimableWinnings: claimable };
+    return {
+      totalValue: value,
+      totalInvested: invested,
+      claimableWinnings: claimable,
+    };
   }, [positions]);
 
   const totalPnL = totalValue - totalInvested;
@@ -56,9 +60,14 @@ export default function PortfolioPage() {
   const handleClaimAll = async () => {
     for (const pos of positions) {
       if (pos.market.isResolved && pos.market.outcome !== null) {
-        const winningBalance = pos.market.outcome ? pos.yesBalance : pos.noBalance;
+        const winningBalance = pos.market.outcome
+          ? pos.yesBalance
+          : pos.noBalance;
         if (winningBalance > 0) {
-          await redeem({ marketAddress: pos.marketAddress, amount: winningBalance });
+          await redeem({
+            marketAddress: pos.marketAddress,
+            amount: winningBalance,
+          });
         }
       }
     }
@@ -151,7 +160,9 @@ export default function PortfolioPage() {
               <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
                 <p className="text-gray-400 text-sm">Unrealized P&L</p>
                 <p
-                  className={`text-3xl font-bold mt-1 ${totalPnL >= 0 ? "text-green-400" : "text-red-400"}`}
+                  className={`text-3xl font-bold mt-1 ${
+                    totalPnL >= 0 ? "text-green-400" : "text-red-400"
+                  }`}
                 >
                   {totalPnL >= 0 ? "+" : ""}
                   {formatPoolAmount(totalPnL)} SOL
@@ -239,15 +250,21 @@ export default function PortfolioPage() {
                       {filteredPositions.map((position) => {
                         const hasYes = position.yesBalance > 0;
                         const hasNo = position.noBalance > 0;
-                        const totalShares = position.yesBalance + position.noBalance;
-                        const estimatedValue = position.yesValue + position.noValue;
+                        const hasPosition = hasYes || hasNo;
+                        const totalShares =
+                          position.yesBalance + position.noBalance;
+                        const estimatedValue =
+                          position.yesValue + position.noValue;
                         const pnl = estimatedValue - totalShares;
-                        const pnlPercent = totalShares > 0 ? (pnl / totalShares) * 100 : 0;
+                        const pnlPercent =
+                          totalShares > 0 ? (pnl / totalShares) * 100 : 0;
 
-                        const isWinner = position.market.isResolved && position.market.outcome !== null && (
-                          (position.market.outcome && hasYes) ||
-                          (!position.market.outcome && hasNo)
-                        );
+                        const isWinner =
+                          hasPosition &&
+                          position.market.isResolved &&
+                          position.market.outcome !== null &&
+                          ((position.market.outcome && hasYes) ||
+                            (!position.market.outcome && hasNo));
 
                         return (
                           <tr
@@ -261,7 +278,7 @@ export default function PortfolioPage() {
                               >
                                 {position.market.title}
                               </Link>
-                              {position.market.isResolved && (
+                              {position.market.isResolved && hasPosition ? (
                                 <span
                                   className={`text-xs px-2 py-0.5 rounded-full ml-2 ${
                                     isWinner
@@ -271,7 +288,11 @@ export default function PortfolioPage() {
                                 >
                                   {isWinner ? "Won" : "Lost"}
                                 </span>
-                              )}
+                              ) : position.market.isResolved ? (
+                                <span className="text-xs px-2 py-0.5 rounded-full ml-2 bg-gray-500/20 text-gray-300">
+                                  Resolved
+                                </span>
+                              ) : null}
                             </td>
                             <td className="px-6 py-4">
                               <div className="flex gap-2">
@@ -285,6 +306,11 @@ export default function PortfolioPage() {
                                     NO
                                   </span>
                                 )}
+                                {!hasYes && !hasNo && (
+                                  <span className="text-gray-500 text-sm">
+                                    -
+                                  </span>
+                                )}
                               </div>
                             </td>
                             <td className="px-6 py-4 text-right text-white">
@@ -294,8 +320,13 @@ export default function PortfolioPage() {
                               -
                             </td>
                             <td className="px-6 py-4 text-right text-white">
-                              {hasYes && <div>{position.market.yesOdds.toFixed(1)}%</div>}
-                              {hasNo && <div>{position.market.noOdds.toFixed(1)}%</div>}
+                              {hasYes && (
+                                <div>{position.market.yesOdds.toFixed(1)}%</div>
+                              )}
+                              {hasNo && (
+                                <div>{position.market.noOdds.toFixed(1)}%</div>
+                              )}
+                              {!hasYes && !hasNo && <div>-</div>}
                             </td>
                             <td className="px-6 py-4 text-right">
                               <span
@@ -307,7 +338,11 @@ export default function PortfolioPage() {
                                 {formatPoolAmount(pnl)} SOL
                               </span>
                               <span
-                                className={`text-sm ml-1 ${pnlPercent >= 0 ? "text-green-400" : "text-red-400"}`}
+                                className={`text-sm ml-1 ${
+                                  pnlPercent >= 0
+                                    ? "text-green-400"
+                                    : "text-red-400"
+                                }`}
                               >
                                 ({pnlPercent >= 0 ? "+" : ""}
                                 {pnlPercent.toFixed(1)}%)
@@ -317,10 +352,14 @@ export default function PortfolioPage() {
                               {position.market.isResolved && isWinner ? (
                                 <button
                                   onClick={() => {
-                                    const winningBalance = position.market.outcome
+                                    const winningBalance = position.market
+                                      .outcome
                                       ? position.yesBalance
                                       : position.noBalance;
-                                    redeem({ marketAddress: position.marketAddress, amount: winningBalance });
+                                    redeem({
+                                      marketAddress: position.marketAddress,
+                                      amount: winningBalance,
+                                    });
                                   }}
                                   disabled={isRedeeming}
                                   className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-600/50 text-white text-sm font-medium rounded-lg transition-colors disabled:cursor-not-allowed"

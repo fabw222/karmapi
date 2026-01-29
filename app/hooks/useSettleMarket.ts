@@ -43,13 +43,20 @@ export function useSettleMarket() {
           .rpc();
 
         // Invalidate queries
-        await queryClient.invalidateQueries({ queryKey: ["market", params.marketAddress] });
+        await queryClient.invalidateQueries({
+          queryKey: ["market", params.marketAddress],
+        });
         await queryClient.invalidateQueries({ queryKey: ["markets"] });
+        await queryClient.invalidateQueries({
+          queryKey: ["userPosition", params.marketAddress],
+        });
+        await queryClient.invalidateQueries({ queryKey: ["userPositions"] });
 
         return { signature: tx };
       } catch (err) {
         console.error("Error settling market:", err);
-        const errorMessage = err instanceof Error ? err.message : "Failed to settle market";
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to settle market";
         setError(errorMessage);
         return null;
       } finally {

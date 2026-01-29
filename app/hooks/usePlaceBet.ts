@@ -176,18 +176,37 @@ export function usePlaceBet() {
         const signature = await sendTransaction(transaction, connection);
 
         // Wait for confirmation
-        await connection.confirmTransaction(signature, "confirmed");
+        const confirmation = await connection.confirmTransaction(
+          signature,
+          "confirmed"
+        );
+        if (confirmation.value.err) {
+          if (IS_DEV) {
+            console.error(
+              "Place bet transaction failed:",
+              confirmation.value.err
+            );
+          }
+          throw new Error(
+            `Bet transaction failed: ${JSON.stringify(confirmation.value.err)}`
+          );
+        }
 
         // Invalidate queries
-        await queryClient.invalidateQueries({ queryKey: ["market", params.marketAddress] });
+        await queryClient.invalidateQueries({
+          queryKey: ["market", params.marketAddress],
+        });
         await queryClient.invalidateQueries({ queryKey: ["markets"] });
-        await queryClient.invalidateQueries({ queryKey: ["userPosition", params.marketAddress] });
+        await queryClient.invalidateQueries({
+          queryKey: ["userPosition", params.marketAddress],
+        });
         await queryClient.invalidateQueries({ queryKey: ["userPositions"] });
 
         return { signature };
       } catch (err) {
         if (IS_DEV) console.error("Error placing bet:", err);
-        const errorMessage = err instanceof Error ? err.message : "Failed to place bet";
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to place bet";
         setError(errorMessage);
         return null;
       } finally {
