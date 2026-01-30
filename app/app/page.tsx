@@ -87,8 +87,7 @@ export default function Home() {
             Predict the Future
           </h1>
           <p className="text-xl text-gray-400 max-w-2xl mx-auto">
-            Trade on real-world outcomes. Earn rewards for accurate predictions
-            on the Sonic SVM.
+            The first Token-based prediction market, built on the SOL and Sonic SVM
           </p>
           <div className="flex justify-center gap-4 mt-8">
             <Link

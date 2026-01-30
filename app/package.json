@@ -6,9 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "preview": "npx @opennextjs/cloudflare build && npx wrangler dev",
+    "deploy": "npx @opennextjs/cloudflare build && npx wrangler deploy",
+    "cf-typegen": "npx wrangler types --env-interface CloudflareEnv"
   },
   "dependencies": {
+    "@opennextjs/cloudflare": "^1.0.0",
     "@coral-xyz/anchor": "^0.32.1",
     "@solana/spl-token": "^0.4.9",
     "@solana/wallet-adapter-react": "^0.15.39",
@@ -29,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.5",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.61.1"
   }
 }
