@@ -24,6 +24,7 @@ interface CreateMarketParams {
   title: string;
   description: string;
   expiryTimestamp: number;
+  betTokenMint: string;
 }
 
 interface CreateMarketResult {
@@ -68,14 +69,8 @@ export function useCreateMarket() {
           console.log("Creator wallet:", publicKey.toBase58());
         }
 
-        // Get bet token mint from environment
-        const betTokenMintStr = process.env.NEXT_PUBLIC_BET_TOKEN_MINT;
-        if (!betTokenMintStr) {
-          throw new Error(
-            "Bet token mint not configured. Run the setup script first."
-          );
-        }
-        const betTokenMint = new PublicKey(betTokenMintStr);
+        // Get bet token mint from caller
+        const betTokenMint = new PublicKey(params.betTokenMint);
 
         const programInfo = await connection.getAccountInfo(
           program.programId,

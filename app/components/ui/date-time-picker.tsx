@@ -23,6 +23,19 @@ interface DateTimePickerProps {
 const hours = Array.from({ length: 24 }, (_, i) => i)
 const minutes = Array.from({ length: 12 }, (_, i) => i * 5)
 
+function isSameDay(a: Date, b: Date) {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  )
+}
+
+/** Round minute up to the next 5-minute slot */
+function ceilMinute5(m: number) {
+  return Math.ceil(m / 5) * 5
+}
+
 export function DateTimePicker({
   value,
   onChange,
@@ -34,19 +47,49 @@ export function DateTimePicker({
   const selectedHour = value ? value.getHours() : 0
   const selectedMinute = value ? value.getMinutes() : 0
 
+  // When the selected date is the same day as minDate, compute the
+  // earliest allowed hour/minute so past time options are disabled.
+  const isMinDay = !!(value && minDate && isSameDay(value, minDate))
+  const minHour = isMinDay ? minDate!.getHours() : 0
+  const minMinuteRaw = isMinDay ? minDate!.getMinutes() : 0
+  // For the currently-selected hour, compute the earliest allowed minute
+  const minMinute =
+    isMinDay && selectedHour === minHour ? ceilMinute5(minMinuteRaw) : 0
+
+  /** Clamp time forward when the selected day is minDate's day */
+  function clampTime(date: Date, hour: number, minute: number) {
+    if (minDate && isSameDay(date, minDate)) {
+      if (hour < minDate.getHours()) {
+        hour = minDate.getHours()
+        minute = ceilMinute5(minDate.getMinutes())
+      } else if (
+        hour === minDate.getHours() &&
+        minute < ceilMinute5(minDate.getMinutes())
+      ) {
+        minute = ceilMinute5(minDate.getMinutes())
+      }
+      // If clamped minute overflows to 60, bump the hour
+      if (minute >= 60) {
+        hour += 1
+        minute = 0
+      }
+    }
+    date.setHours(hour, minute, 0, 0)
+    return date
+  }
+
   function handleDateSelect(day: Date | undefined) {
     if (!day) return
-    const next = new Date(day)
-    next.setHours(selectedHour, selectedMinute, 0, 0)
+    const next = clampTime(new Date(day), selectedHour, selectedMinute)
     onChange(next)
   }
 
   function handleTimeChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = value ? new Date(value) : new Date()
     if (e.target.name === "hour") {
-      next.setHours(parseInt(e.target.value), selectedMinute, 0, 0)
+      clampTime(next, parseInt(e.target.value), selectedMinute)
     } else {
-      next.setHours(selectedHour, parseInt(e.target.value), 0, 0)
+      clampTime(next, selectedHour, parseInt(e.target.value))
     }
     onChange(next)
   }
@@ -90,7 +133,7 @@ export function DateTimePicker({
             className={selectClass}
           >
             {hours.map((h) => (
-              <option key={h} value={h}>
+              <option key={h} value={h} disabled={h < minHour}>
                 {String(h).padStart(2, "0")}
               </option>
             ))}
@@ -103,7 +146,7 @@ export function DateTimePicker({
             className={selectClass}
           >
             {minutes.map((m) => (
-              <option key={m} value={m}>
+              <option key={m} value={m} disabled={m < minMinute}>
                 {String(m).padStart(2, "0")}
               </option>
             ))}

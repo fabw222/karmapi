@@ -26,6 +26,9 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
   const [endDate, setEndDate] = useState<Date | undefined>(
     () => new Date(Date.now() + SEVEN_DAYS_MS)
   );
+  const [selectedMint, setSelectedMint] = useState(
+    process.env.NEXT_PUBLIC_BET_TOKEN_MINT ?? ""
+  );
 
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -58,6 +61,10 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
       setFormError("End date must be within 1 year from now");
       return false;
     }
+    if (!selectedMint.trim()) {
+      setFormError("Please enter a bet token address");
+      return false;
+    }
     return true;
   };
 
@@ -82,6 +89,7 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
       title: question.trim(),
       description: description.trim(),
       expiryTimestamp,
+      betTokenMint: selectedMint.trim(),
     });
 
     if (result) {
@@ -161,6 +169,28 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
               onChange={setEndDate}
               minDate={new Date()}
             />
+          </div>
+
+          {/* Bet Token */}
+          <div>
+            <label
+              htmlFor="betToken"
+              className="block text-sm font-medium text-gray-300 mb-2"
+            >
+              Bet Token Address *
+            </label>
+            <input
+              type="text"
+              id="betToken"
+              name="betToken"
+              value={selectedMint}
+              onChange={(e) => setSelectedMint(e.target.value)}
+              placeholder="Enter SPL token mint address"
+              className="w-full bg-gray-700 border border-gray-600 rounded-lg py-3 px-4 text-white font-mono text-sm placeholder-gray-500 focus:outline-none focus:border-purple-500"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Paste the SPL token mint address used for betting in this market
+            </p>
           </div>
 
           {/* Market Creation Fee Info */}
