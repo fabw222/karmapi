@@ -11,6 +11,7 @@ import { ACCOUNT_SIZE, MINT_SIZE, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { BN } from "@coral-xyz/anchor";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAnchorProgram } from "@/providers/AnchorProvider";
+import { useCluster } from "@/providers/ClusterProvider";
 import { deriveAllMarketPDAs } from "@/lib/pda";
 
 const IS_DEV = process.env.NODE_ENV === "development";
@@ -34,6 +35,7 @@ export function useCreateMarket() {
   const { publicKey } = useWallet();
   const { connection } = useConnection();
   const { program } = useAnchorProgram();
+  const { cluster } = useCluster();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -220,7 +222,7 @@ export function useCreateMarket() {
         const signature = await method.rpc();
 
         // Invalidate markets query to refresh list
-        await queryClient.invalidateQueries({ queryKey: ["markets"] });
+        await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
 
         return {
           marketAddress: pdas.market.toBase58(),
@@ -256,7 +258,7 @@ export function useCreateMarket() {
               "processed"
             );
             if (accountInfo) {
-              await queryClient.invalidateQueries({ queryKey: ["markets"] });
+              await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
               return { marketAddress: marketPda.toBase58(), signature };
             }
             await new Promise((resolve) => setTimeout(resolve, 400));
@@ -268,7 +270,7 @@ export function useCreateMarket() {
             ]);
             const status = statusResp.value[0];
             if (status && status.err == null) {
-              await queryClient.invalidateQueries({ queryKey: ["markets"] });
+              await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
               return { marketAddress: marketPda.toBase58(), signature };
             }
           }
@@ -284,7 +286,7 @@ export function useCreateMarket() {
         inFlightRef.current = false;
       }
     },
-    [program, publicKey, connection, queryClient]
+    [program, publicKey, connection, queryClient, cluster]
   );
 
   const reset = useCallback(() => {

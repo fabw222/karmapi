@@ -3,6 +3,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAnchorProgram } from "@/providers/AnchorProvider";
+import { useCluster } from "@/providers/ClusterProvider";
 
 interface SettleMarketParams {
   marketAddress: string;
@@ -16,6 +17,7 @@ interface SettleMarketResult {
 export function useSettleMarket() {
   const { publicKey } = useWallet();
   const { program } = useAnchorProgram();
+  const { cluster } = useCluster();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,13 +46,13 @@ export function useSettleMarket() {
 
         // Invalidate queries
         await queryClient.invalidateQueries({
-          queryKey: ["market", params.marketAddress],
+          queryKey: ["market", cluster, params.marketAddress],
         });
-        await queryClient.invalidateQueries({ queryKey: ["markets"] });
+        await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
         await queryClient.invalidateQueries({
-          queryKey: ["userPosition", params.marketAddress],
+          queryKey: ["userPosition", cluster, params.marketAddress],
         });
-        await queryClient.invalidateQueries({ queryKey: ["userPositions"] });
+        await queryClient.invalidateQueries({ queryKey: ["userPositions", cluster] });
 
         return { signature: tx };
       } catch (err) {
@@ -63,7 +65,7 @@ export function useSettleMarket() {
         setIsLoading(false);
       }
     },
-    [program, publicKey, queryClient]
+    [program, publicKey, queryClient, cluster]
   );
 
   const reset = useCallback(() => {

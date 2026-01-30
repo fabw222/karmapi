@@ -1,45 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
+import { Header } from "@/components/Header";
 import { CreateMarketForm } from "@/components/CreateMarketForm";
 
 export default function CreatePage() {
   return (
     <div className="min-h-screen bg-gray-900">
-      {/* Header */}
-      <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center gap-2">
-              <span className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
-                KarmaPi
-              </span>
-            </Link>
-            <nav className="hidden md:flex items-center gap-8">
-              <Link
-                href="/"
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                Markets
-              </Link>
-              <Link
-                href="/create"
-                className="text-white font-medium hover:text-purple-400 transition-colors"
-              >
-                Create
-              </Link>
-              <Link
-                href="/portfolio"
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                Portfolio
-              </Link>
-            </nav>
-            <WalletMultiButton className="!bg-purple-600 hover:!bg-purple-700 !rounded-lg" />
-          </div>
-        </div>
-      </header>
+      <Header activeLink="create" />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Breadcrumb */}

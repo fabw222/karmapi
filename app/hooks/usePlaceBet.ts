@@ -12,6 +12,7 @@ import {
 import { BN } from "@coral-xyz/anchor";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAnchorProgram } from "@/providers/AnchorProvider";
+import { useCluster } from "@/providers/ClusterProvider";
 import { deriveYesMintPDA, deriveNoMintPDA, deriveVaultPDA } from "@/lib/pda";
 
 const IS_DEV = process.env.NODE_ENV === "development";
@@ -31,6 +32,7 @@ export function usePlaceBet() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
   const { program, provider } = useAnchorProgram();
+  const { cluster } = useCluster();
   const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,13 +196,13 @@ export function usePlaceBet() {
 
         // Invalidate queries
         await queryClient.invalidateQueries({
-          queryKey: ["market", params.marketAddress],
+          queryKey: ["market", cluster, params.marketAddress],
         });
-        await queryClient.invalidateQueries({ queryKey: ["markets"] });
+        await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
         await queryClient.invalidateQueries({
-          queryKey: ["userPosition", params.marketAddress],
+          queryKey: ["userPosition", cluster, params.marketAddress],
         });
-        await queryClient.invalidateQueries({ queryKey: ["userPositions"] });
+        await queryClient.invalidateQueries({ queryKey: ["userPositions", cluster] });
 
         return { signature };
       } catch (err) {
@@ -213,7 +215,7 @@ export function usePlaceBet() {
         setIsLoading(false);
       }
     },
-    [program, publicKey, provider, connection, sendTransaction, queryClient]
+    [program, publicKey, provider, connection, sendTransaction, queryClient, cluster]
   );
 
   const reset = useCallback(() => {

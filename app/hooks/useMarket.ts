@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useConnection } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { useAnchorProgram } from "@/providers/AnchorProvider";
+import { useCluster } from "@/providers/ClusterProvider";
 import { MarketUI, MarketAccountData, marketToUI } from "@/types/market";
 
 /**
@@ -10,11 +11,12 @@ import { MarketUI, MarketAccountData, marketToUI } from "@/types/market";
 export function useMarket(marketAddress: string | null) {
   const { connection } = useConnection();
   const { program } = useAnchorProgram();
+  const { cluster } = useCluster();
 
   return useQuery<MarketUI | null>({
-    queryKey: ["market", marketAddress],
+    queryKey: ["market", cluster, marketAddress],
     queryFn: async () => {
-      if (!program || !marketAddress) {
+      if (!marketAddress) {
         return null;
       }
 
@@ -40,11 +42,12 @@ export function useMarket(marketAddress: string | null) {
 export function useMultipleMarkets(marketAddresses: string[]) {
   const { connection } = useConnection();
   const { program } = useAnchorProgram();
+  const { cluster } = useCluster();
 
   return useQuery<MarketUI[]>({
-    queryKey: ["markets", marketAddresses],
+    queryKey: ["markets", cluster, marketAddresses],
     queryFn: async () => {
-      if (!program || marketAddresses.length === 0) {
+      if (marketAddresses.length === 0) {
         return [];
       }
 

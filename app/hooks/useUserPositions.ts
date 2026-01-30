@@ -7,6 +7,7 @@ import {
   TOKEN_PROGRAM_ID,
 } from "@solana/spl-token";
 import { useAnchorProgram } from "@/providers/AnchorProvider";
+import { useCluster } from "@/providers/ClusterProvider";
 import {
   MarketUI,
   MarketAccountData,
@@ -25,11 +26,12 @@ export function useUserPositions() {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
   const { program } = useAnchorProgram();
+  const { cluster } = useCluster();
 
   return useQuery<PositionWithMarket[]>({
-    queryKey: ["userPositions", publicKey?.toBase58()],
+    queryKey: ["userPositions", cluster, publicKey?.toBase58()],
     queryFn: async () => {
-      if (!program || !publicKey) {
+      if (!publicKey) {
         return [];
       }
 
@@ -130,7 +132,7 @@ export function useUserPositions() {
         return [];
       }
     },
-    enabled: !!connection && !!publicKey && !!program,
+    enabled: !!connection && !!publicKey,
     staleTime: 10 * 1000,
     refetchInterval: 30 * 1000,
   });
@@ -143,11 +145,12 @@ export function useUserPosition(marketAddress: string | null) {
   const { connection } = useConnection();
   const { publicKey } = useWallet();
   const { program } = useAnchorProgram();
+  const { cluster } = useCluster();
 
   return useQuery<UserPosition | null>({
-    queryKey: ["userPosition", marketAddress, publicKey?.toBase58()],
+    queryKey: ["userPosition", cluster, marketAddress, publicKey?.toBase58()],
     queryFn: async () => {
-      if (!program || !publicKey || !marketAddress) {
+      if (!publicKey || !marketAddress) {
         return null;
       }
 

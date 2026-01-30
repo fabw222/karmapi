@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import { AnchorProvider, Program, Idl } from "@coral-xyz/anchor";
-import { PublicKey } from "@solana/web3.js";
+import { Keypair, PublicKey } from "@solana/web3.js";
 import idl from "@/idl/market_factory.json";
 import { MarketFactory } from "@/types/market_factory";
 
@@ -37,16 +37,25 @@ if (process.env.NODE_ENV === "development") {
 }
 
 interface AnchorContextType {
-  program: Program<MarketFactory> | null;
+  program: Program<MarketFactory>;
   provider: AnchorProvider | null;
   programId: PublicKey;
 }
 
-const AnchorContext = createContext<AnchorContextType>({
-  program: null,
-  provider: null,
-  programId: PROGRAM_ID,
-});
+const READONLY_WALLET = (() => {
+  const keypair = Keypair.generate();
+  return {
+    publicKey: keypair.publicKey,
+    signTransaction: async () => {
+      throw new Error("Wallet not connected");
+    },
+    signAllTransactions: async () => {
+      throw new Error("Wallet not connected");
+    },
+  };
+})();
+
+const AnchorContext = createContext<AnchorContextType | null>(null);
 
 export const AnchorContextProvider: FC<{ children: ReactNode }> = ({
   children,
@@ -55,10 +64,19 @@ export const AnchorContextProvider: FC<{ children: ReactNode }> = ({
   const wallet = useWallet();
 
   const { provider, program } = useMemo(() => {
+    const resolvedIdl = { ...IDL, address: PROGRAM_ID.toBase58() } as Idl;
+
     if (!wallet.publicKey || !wallet.signTransaction || !wallet.signAllTransactions) {
-      return { provider: null, program: null };
+      // Read-only program (no wallet) — sufficient for fetching accounts
+      const provider = new AnchorProvider(connection, READONLY_WALLET, {
+        commitment: "confirmed",
+        preflightCommitment: "confirmed",
+      });
+      const program = new Program(resolvedIdl, provider) as unknown as Program<MarketFactory>;
+      return { provider: null, program };
     }
 
+    // Full read-write program with wallet signer
     const anchorWallet = {
       publicKey: wallet.publicKey,
       signTransaction: wallet.signTransaction,
@@ -70,12 +88,7 @@ export const AnchorContextProvider: FC<{ children: ReactNode }> = ({
       preflightCommitment: "confirmed",
     });
 
-    const resolvedIdl = { ...IDL, address: PROGRAM_ID.toBase58() } as Idl;
-    const program = new Program(
-      resolvedIdl,
-      provider
-    ) as unknown as Program<MarketFactory>;
-
+    const program = new Program(resolvedIdl, provider) as unknown as Program<MarketFactory>;
     return { provider, program };
   }, [connection, wallet.publicKey, wallet.signTransaction, wallet.signAllTransactions]);
 

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useConnection } from "@solana/wallet-adapter-react";
-import { PublicKey } from "@solana/web3.js";
-import { useAnchorProgram, PROGRAM_ID } from "@/providers/AnchorProvider";
+import { useAnchorProgram } from "@/providers/AnchorProvider";
+import { useCluster } from "@/providers/ClusterProvider";
 import { MarketUI, MarketAccountData, marketToUI } from "@/types/market";
 
 /**
@@ -10,35 +10,26 @@ import { MarketUI, MarketAccountData, marketToUI } from "@/types/market";
 export function useMarkets() {
   const { connection } = useConnection();
   const { program } = useAnchorProgram();
+  const { cluster } = useCluster();
 
   return useQuery<MarketUI[]>({
-    queryKey: ["markets"],
+    queryKey: ["markets", cluster],
     queryFn: async () => {
-      if (!program) {
-        // Return empty array if program not initialized
-        return [];
-      }
+      // Fetch all Market accounts
+      const accounts = await program.account.market.all();
 
-      try {
-        // Fetch all Market accounts
-        const accounts = await program.account.market.all();
+      // Convert to UI format
+      const markets = accounts.map((account) =>
+        marketToUI(
+          account.publicKey,
+          account.account as unknown as MarketAccountData
+        )
+      );
 
-        // Convert to UI format
-        const markets = accounts.map((account) =>
-          marketToUI(
-            account.publicKey,
-            account.account as unknown as MarketAccountData
-          )
-        );
+      // Sort by total volume (descending) by default
+      markets.sort((a, b) => b.totalVolume - a.totalVolume);
 
-        // Sort by total volume (descending) by default
-        markets.sort((a, b) => b.totalVolume - a.totalVolume);
-
-        return markets;
-      } catch (error) {
-        console.error("Error fetching markets:", error);
-        return [];
-      }
+      return markets;
     },
     enabled: !!connection,
     staleTime: 10 * 1000,

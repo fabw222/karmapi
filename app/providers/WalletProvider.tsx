@@ -7,18 +7,16 @@ import {
 } from "@solana/wallet-adapter-react";
 import { WalletModalProvider } from "@solana/wallet-adapter-react-ui";
 import { PhantomWalletAdapter } from "@solana/wallet-adapter-wallets";
+import { useCluster } from "@/providers/ClusterProvider";
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 
-// Use environment variable for RPC endpoint, supporting devnet/mainnet switching
-const RPC_ENDPOINT =
-  process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
-
 export const WalletProvider: FC<{ children: ReactNode }> = ({ children }) => {
+  const { endpoint } = useCluster();
   const wallets = useMemo(() => [new PhantomWalletAdapter()], []);
 
   return (
-    <ConnectionProvider endpoint={RPC_ENDPOINT}>
+    <ConnectionProvider endpoint={endpoint}>
       <SolanaWalletProvider wallets={wallets} autoConnect>
         <WalletModalProvider>{children}</WalletModalProvider>
       </SolanaWalletProvider>
