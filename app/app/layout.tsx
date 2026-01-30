@@ -43,7 +43,7 @@ export default async function RootLayout({
   const initialCluster = cookieCluster ?? envCluster ?? DEFAULT_CLUSTER;
 
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

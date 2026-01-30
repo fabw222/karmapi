@@ -23,7 +23,7 @@ const MARKET_ACCOUNT_SIZE = 844;
 interface CreateMarketParams {
   title: string;
   description: string;
-  durationDays: number;
+  expiryTimestamp: number;
 }
 
 interface CreateMarketResult {
@@ -135,10 +135,8 @@ export function useCreateMarket() {
           );
         }
 
-        // Calculate expiry timestamp
-        let expiryTimestamp = new BN(
-          Math.floor(Date.now() / 1000) + params.durationDays * 24 * 60 * 60
-        );
+        // Use the absolute expiry timestamp provided by the caller
+        let expiryTimestamp = new BN(params.expiryTimestamp);
 
         // Derive all PDAs (retry if PDA already exists)
         let pdas = deriveAllMarketPDAs(

@@ -5,10 +5,14 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { useRouter } from "next/navigation";
 import { useCreateMarket } from "@/hooks/useCreateMarket";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 
 interface CreateMarketFormProps {
   onMarketCreated?: (marketId: string) => void;
 }
+
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 export const CreateMarketForm: FC<CreateMarketFormProps> = ({
   onMarketCreated,
@@ -17,43 +21,41 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
   const router = useRouter();
   const { createMarket, isLoading, error, reset } = useCreateMarket();
 
-  const [formData, setFormData] = useState({
-    question: "",
-    description: "",
-    duration: "7", // days
-  });
-
-  const handleChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
-  ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  const [question, setQuestion] = useState("");
+  const [description, setDescription] = useState("");
+  const [endDate, setEndDate] = useState<Date | undefined>(
+    () => new Date(Date.now() + SEVEN_DAYS_MS)
+  );
 
   const [formError, setFormError] = useState<string | null>(null);
 
   const validateForm = (): boolean => {
-    if (!formData.question.trim()) {
+    if (!question.trim()) {
       setFormError("Question is required");
       return false;
     }
-    if (formData.question.length > 128) {
+    if (question.length > 128) {
       setFormError("Question must be less than 128 characters");
       return false;
     }
-    if (!formData.description.trim()) {
+    if (!description.trim()) {
       setFormError("Description is required");
       return false;
     }
-    if (formData.description.length > 512) {
+    if (description.length > 512) {
       setFormError("Description must be less than 512 characters");
       return false;
     }
-    const duration = parseFloat(formData.duration);
-    if (isNaN(duration) || duration <= 0 || duration > 365) {
-      setFormError("Duration must be greater than 0 and at most 365 days");
+    if (!endDate) {
+      setFormError("Please select an end date");
+      return false;
+    }
+    if (endDate.getTime() <= Date.now()) {
+      setFormError("End date must be in the future");
+      return false;
+    }
+    if (endDate.getTime() > Date.now() + ONE_YEAR_MS) {
+      setFormError("End date must be within 1 year from now");
       return false;
     }
     return true;
@@ -74,10 +76,12 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
       return;
     }
 
+    const expiryTimestamp = Math.floor(endDate!.getTime() / 1000);
+
     const result = await createMarket({
-      title: formData.question.trim(),
-      description: formData.description.trim(),
-      durationDays: parseFloat(formData.duration),
+      title: question.trim(),
+      description: description.trim(),
+      expiryTimestamp,
     });
 
     if (result) {
@@ -85,18 +89,6 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
       router.push(`/market/${result.marketAddress}`);
     }
   };
-
-  const durationOptions = [
-    { value: "0.000694", label: "1 minute (test)" },
-    { value: "1", label: "1 day" },
-    { value: "3", label: "3 days" },
-    { value: "7", label: "1 week" },
-    { value: "14", label: "2 weeks" },
-    { value: "30", label: "1 month" },
-    { value: "90", label: "3 months" },
-    { value: "180", label: "6 months" },
-    { value: "365", label: "1 year" },
-  ];
 
   return (
     <div className="bg-gray-800 rounded-xl p-8 border border-gray-700 max-w-2xl mx-auto">
@@ -125,14 +117,14 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
               type="text"
               id="question"
               name="question"
-              value={formData.question}
-              onChange={handleChange}
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
               placeholder="Will Bitcoin reach $100,000 by end of 2024?"
               className="w-full bg-gray-700 border border-gray-600 rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
               maxLength={128}
             />
             <p className="text-xs text-gray-500 mt-1">
-              {formData.question.length}/128 characters
+              {question.length}/128 characters
             </p>
           </div>
 
@@ -147,39 +139,28 @@ export const CreateMarketForm: FC<CreateMarketFormProps> = ({
             <textarea
               id="description"
               name="description"
-              value={formData.description}
-              onChange={handleChange}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="Provide clear resolution criteria. What conditions must be met for YES to win?"
               rows={4}
               className="w-full bg-gray-700 border border-gray-600 rounded-lg py-3 px-4 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none"
               maxLength={512}
             />
             <p className="text-xs text-gray-500 mt-1">
-              {formData.description.length}/512 characters
+              {description.length}/512 characters
             </p>
           </div>
 
-          {/* Duration */}
+          {/* End Date */}
           <div>
-            <label
-              htmlFor="duration"
-              className="block text-sm font-medium text-gray-300 mb-2"
-            >
-              Market Duration
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Market End Date
             </label>
-            <select
-              id="duration"
-              name="duration"
-              value={formData.duration}
-              onChange={handleChange}
-              className="w-full bg-gray-700 border border-gray-600 rounded-lg py-3 px-4 text-white focus:outline-none focus:border-purple-500"
-            >
-              {durationOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <DateTimePicker
+              value={endDate}
+              onChange={setEndDate}
+              minDate={new Date()}
+            />
           </div>
 
           {/* Market Creation Fee Info */}
