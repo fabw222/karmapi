@@ -154,13 +154,15 @@ export default function MarketPage() {
             {/* Odds Display */}
             <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
               <h3 className="text-xl font-bold text-white mb-4">
-                Current Odds
+                {market.isResolved ? "Final Result" : "Current Odds"}
               </h3>
               <OddsDisplay
                 yesPool={market.yesPool}
                 noPool={market.noPool}
                 tokenSymbol={symbol}
                 tokenDecimals={decimals}
+                isResolved={market.isResolved}
+                outcome={market.outcome}
               />
             </div>
 
