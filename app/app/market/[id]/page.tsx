@@ -11,6 +11,7 @@ import { useMarket } from "@/hooks/useMarket";
 import { useSettleMarket } from "@/hooks/useSettleMarket";
 import { useRedeem } from "@/hooks/useRedeem";
 import { useUserPosition } from "@/hooks/useUserPositions";
+import { useTokenInfo, tokenDisplaySymbol } from "@/hooks/useTokenInfo";
 import { formatPoolAmount, formatTimeRemaining } from "@/types/market";
 
 export default function MarketPage() {
@@ -22,6 +23,10 @@ export default function MarketPage() {
   const { settleMarket, isLoading: isSettling, error: settleError } = useSettleMarket();
   const { redeem, isLoading: isRedeeming, error: redeemError } = useRedeem();
   const [settleOutcome, setSettleOutcome] = useState<boolean>(true);
+
+  const { data: tokenInfo } = useTokenInfo(market?.betTokenMint);
+  const decimals = tokenInfo?.decimals ?? 9;
+  const symbol = tokenDisplaySymbol(tokenInfo, market?.betTokenMint);
 
   const handleBetPlaced = () => {
     refetch();
@@ -151,7 +156,12 @@ export default function MarketPage() {
               <h3 className="text-xl font-bold text-white mb-4">
                 Current Odds
               </h3>
-              <OddsDisplay yesPool={market.yesPool} noPool={market.noPool} />
+              <OddsDisplay
+                yesPool={market.yesPool}
+                noPool={market.noPool}
+                tokenSymbol={symbol}
+                tokenDecimals={decimals}
+              />
             </div>
 
             {/* Market Details */}
@@ -163,7 +173,7 @@ export default function MarketPage() {
                 <div className="flex justify-between py-3 border-b border-gray-700">
                   <span className="text-gray-400">Total Volume</span>
                   <span className="text-white font-medium">
-                    {formatPoolAmount(market.totalVolume)} SOL
+                    {formatPoolAmount(market.totalVolume, decimals)} {symbol}
                   </span>
                 </div>
                 <div className="flex justify-between py-3 border-b border-gray-700">
@@ -212,6 +222,7 @@ export default function MarketPage() {
                   amount={0.5}
                   user="9WzD...hUqS"
                   time="2 hours ago"
+                  tokenSymbol={symbol}
                 />
                 <ActivityItem
                   type="bet"
@@ -219,6 +230,7 @@ export default function MarketPage() {
                   amount={1.2}
                   user="7xKX...gAsU"
                   time="5 hours ago"
+                  tokenSymbol={symbol}
                 />
                 <ActivityItem
                   type="bet"
@@ -226,6 +238,7 @@ export default function MarketPage() {
                   amount={2.0}
                   user="3mKL...pQrT"
                   time="1 day ago"
+                  tokenSymbol={symbol}
                 />
               </div>
             </div>
@@ -329,7 +342,7 @@ export default function MarketPage() {
                     <div className="flex justify-between">
                       <span className="text-green-400">YES Tokens</span>
                       <span className="text-white font-medium">
-                        {formatPoolAmount(userPosition.yesBalance)}
+                        {formatPoolAmount(userPosition.yesBalance, decimals)}
                       </span>
                     </div>
                   )}
@@ -337,7 +350,7 @@ export default function MarketPage() {
                     <div className="flex justify-between">
                       <span className="text-red-400">NO Tokens</span>
                       <span className="text-white font-medium">
-                        {formatPoolAmount(userPosition.noBalance)}
+                        {formatPoolAmount(userPosition.noBalance, decimals)}
                       </span>
                     </div>
                   )}
@@ -358,12 +371,14 @@ function ActivityItem({
   amount,
   user,
   time,
+  tokenSymbol,
 }: {
   type: string;
   side: "yes" | "no";
   amount: number;
   user: string;
   time: string;
+  tokenSymbol?: string;
 }) {
   return (
     <div className="flex items-center justify-between py-2">
@@ -373,7 +388,7 @@ function ActivityItem({
         />
         <span className="text-white font-mono text-sm">{user}</span>
         <span className="text-gray-400 text-sm">
-          bet {amount} SOL on{" "}
+          bet {amount} {tokenSymbol ?? "SOL"} on{" "}
           <span className={side === "yes" ? "text-green-400" : "text-red-400"}>
             {side.toUpperCase()}
           </span>

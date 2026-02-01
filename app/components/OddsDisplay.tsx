@@ -6,16 +6,23 @@ interface OddsDisplayProps {
   yesPool: number;
   noPool: number;
   compact?: boolean;
+  tokenSymbol?: string;
+  tokenDecimals?: number;
 }
 
 export const OddsDisplay: FC<OddsDisplayProps> = ({
   yesPool,
   noPool,
   compact = false,
+  tokenSymbol,
+  tokenDecimals,
 }) => {
   const totalPool = yesPool + noPool;
   const yesOdds = totalPool > 0 ? (yesPool / totalPool) * 100 : 50;
   const noOdds = totalPool > 0 ? (noPool / totalPool) * 100 : 50;
+
+  const symbol = tokenSymbol ?? "SOL";
+  const divisor = Math.pow(10, tokenDecimals ?? 9);
 
   if (compact) {
     return (
@@ -58,8 +65,8 @@ export const OddsDisplay: FC<OddsDisplayProps> = ({
         />
       </div>
       <div className="flex justify-between text-sm text-gray-400 mt-2">
-        <span>Pool: {(yesPool / 1e9).toFixed(2)} SOL</span>
-        <span>Pool: {(noPool / 1e9).toFixed(2)} SOL</span>
+        <span>Pool: {(yesPool / divisor).toFixed(2)} {symbol}</span>
+        <span>Pool: {(noPool / divisor).toFixed(2)} {symbol}</span>
       </div>
     </div>
   );

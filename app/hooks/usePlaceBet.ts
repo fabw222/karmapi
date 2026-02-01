@@ -17,6 +17,10 @@ import { deriveYesMintPDA, deriveNoMintPDA, deriveVaultPDA } from "@/lib/pda";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 
+// Each ATA creation costs rent-exempt minimum (~0.00204 SOL)
+export const ATA_RENT = 2_039_280; // lamports
+export const TX_FEE = 10_000; // lamports, conservative for 1 sig
+
 interface PlaceBetParams {
   marketAddress: string;
   betTokenMint: string;
@@ -97,11 +101,13 @@ export function usePlaceBet() {
 
         // Build transaction with ATA creation if needed
         const transaction = new Transaction();
+        let newAtaCount = 0;
 
         // Check if YES ATA exists, create if not
         try {
           await getAccount(connection, bettorYesAccount);
         } catch {
+          newAtaCount++;
           transaction.add(
             createAssociatedTokenAccountInstruction(
               publicKey,
@@ -116,6 +122,7 @@ export function usePlaceBet() {
         try {
           await getAccount(connection, bettorNoAccount);
         } catch {
+          newAtaCount++;
           transaction.add(
             createAssociatedTokenAccountInstruction(
               publicKey,
@@ -132,6 +139,7 @@ export function usePlaceBet() {
           try {
             await getAccount(connection, bettorTokenAccount);
           } catch {
+            newAtaCount++;
             transaction.add(
               createAssociatedTokenAccountInstruction(
                 publicKey,
@@ -139,6 +147,15 @@ export function usePlaceBet() {
                 publicKey,
                 betTokenMint
               )
+            );
+          }
+
+          // Validate SOL balance
+          const overhead = (newAtaCount * ATA_RENT) + TX_FEE;
+          const solBalance = await connection.getBalance(publicKey);
+          if (solBalance < params.amount + overhead) {
+            throw new Error(
+              `Insufficient SOL balance. You have ${(solBalance / 1e9).toFixed(4)} SOL but need ~${((params.amount + overhead) / 1e9).toFixed(4)} SOL (bet + fees).`
             );
           }
 
@@ -153,6 +170,35 @@ export function usePlaceBet() {
 
           // Sync native balance to reflect the transferred SOL as WSOL
           transaction.add(createSyncNativeInstruction(bettorTokenAccount));
+        } else {
+          // Non-WSOL: Check if bettor's token ATA exists, create if not
+          try {
+            const tokenAccount = await getAccount(
+              connection,
+              bettorTokenAccount
+            );
+            // Validate token balance
+            if (Number(tokenAccount.amount) < params.amount) {
+              throw new Error(
+                `Insufficient token balance. You have ${Number(tokenAccount.amount)} base units but need ${params.amount}.`
+              );
+            }
+          } catch (e) {
+            // If it's our own thrown error, re-throw
+            if (e instanceof Error && e.message.startsWith("Insufficient")) {
+              throw e;
+            }
+            // ATA doesn't exist — create it (user may have 0 balance, but the
+            // transaction will fail on-chain with a clearer program error)
+            transaction.add(
+              createAssociatedTokenAccountInstruction(
+                publicKey,
+                bettorTokenAccount,
+                publicKey,
+                betTokenMint
+              )
+            );
+          }
         }
 
         // Add the place bet instruction
@@ -173,6 +219,22 @@ export function usePlaceBet() {
           .instruction();
 
         transaction.add(placeBetIx);
+
+        // Simulate transaction for better error reporting
+        if (IS_DEV) {
+          const { blockhash } = await connection.getLatestBlockhash();
+          transaction.recentBlockhash = blockhash;
+          transaction.feePayer = publicKey;
+          const sim = await connection.simulateTransaction(transaction);
+          if (sim.value.err) {
+            console.error("Simulation failed:", sim.value.err);
+            console.error("Simulation logs:", sim.value.logs);
+            const logStr = sim.value.logs?.join("\n") ?? "";
+            throw new Error(
+              `Transaction simulation failed: ${JSON.stringify(sim.value.err)}${logStr ? `\nLogs:\n${logStr}` : ""}`
+            );
+          }
+        }
 
         // Send transaction
         const signature = await sendTransaction(transaction, connection);

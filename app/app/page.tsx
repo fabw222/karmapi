@@ -6,6 +6,7 @@ import { MarketCard } from "@/components/MarketCard";
 import { Header } from "@/components/Header";
 import { useMarkets } from "@/hooks/useMarkets";
 import { MarketUI, formatPoolAmount } from "@/types/market";
+import { useTokenInfo, tokenDisplaySymbol } from "@/hooks/useTokenInfo";
 
 type SortOption = "volume" | "ending" | "newest";
 
@@ -41,7 +42,6 @@ export default function Home() {
   }, [marketsData, sortBy, showResolved]);
 
   // Calculate stats
-  const totalVolume = marketsData?.reduce((sum, m) => sum + m.totalVolume, 0) || 0;
   const activeMarketsCount = marketsData?.filter((m) => !m.isResolved).length || 0;
 
   return (
@@ -77,9 +77,11 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
             <p className="text-gray-400 text-sm">Total Volume</p>
-            <p className="text-3xl font-bold text-white mt-1">
-              {isLoading ? "..." : formatPoolAmount(totalVolume)} SOL
-            </p>
+            {isLoading ? (
+              <p className="text-3xl font-bold text-white mt-1">...</p>
+            ) : (
+              <TotalVolumeDisplay markets={marketsData || []} />
+            )}
           </div>
           <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
             <p className="text-gray-400 text-sm">Active Markets</p>
@@ -184,5 +186,42 @@ export default function Home() {
         </div>
       </footer>
     </div>
+  );
+}
+
+// Sub-components for per-mint volume display
+
+function TotalVolumeDisplay({ markets }: { markets: MarketUI[] }) {
+  // Group volumes by betTokenMint
+  const volumeByMint = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const m of markets) {
+      map.set(m.betTokenMint, (map.get(m.betTokenMint) || 0) + m.totalVolume);
+    }
+    return Array.from(map.entries()); // [mint, volume][]
+  }, [markets]);
+
+  if (volumeByMint.length === 0) {
+    return <p className="text-3xl font-bold text-white mt-1">0</p>;
+  }
+
+  return (
+    <div className="mt-1 space-y-1">
+      {volumeByMint.map(([mint, volume]) => (
+        <MintVolume key={mint} mint={mint} volume={volume} />
+      ))}
+    </div>
+  );
+}
+
+function MintVolume({ mint, volume }: { mint: string; volume: number }) {
+  const { data: tokenInfo } = useTokenInfo(mint);
+  const decimals = tokenInfo?.decimals ?? 9;
+  const symbol = tokenDisplaySymbol(tokenInfo, mint);
+
+  return (
+    <p className="text-3xl font-bold text-white">
+      {formatPoolAmount(volume, decimals)} {symbol}
+    </p>
   );
 }

@@ -3,6 +3,7 @@
 import { FC } from "react";
 import Link from "next/link";
 import { OddsDisplay } from "./OddsDisplay";
+import { useTokenInfo, tokenDisplaySymbol } from "@/hooks/useTokenInfo";
 import { MarketUI, formatPoolAmount, formatTimeRemaining } from "@/types/market";
 
 interface MarketCardProps {
@@ -10,6 +11,10 @@ interface MarketCardProps {
 }
 
 export const MarketCard: FC<MarketCardProps> = ({ market }) => {
+  const { data: tokenInfo } = useTokenInfo(market.betTokenMint);
+  const decimals = tokenInfo?.decimals ?? 9;
+  const symbol = tokenDisplaySymbol(tokenInfo, market.betTokenMint);
+
   return (
     <Link href={`/market/${market.address}`}>
       <div className="bg-gray-800 rounded-xl p-6 hover:bg-gray-750 transition-all duration-200 border border-gray-700 hover:border-purple-500 cursor-pointer group">
@@ -51,7 +56,7 @@ export const MarketCard: FC<MarketCardProps> = ({ market }) => {
         <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-700">
           <div className="text-sm text-gray-400">
             <span className="text-purple-400 font-medium">
-              {formatPoolAmount(market.totalVolume)} SOL
+              {formatPoolAmount(market.totalVolume, decimals)} {symbol}
             </span>{" "}
             total
           </div>
