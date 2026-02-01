@@ -3,6 +3,7 @@ import { useConnection } from "@solana/wallet-adapter-react";
 import { useAnchorProgram } from "@/providers/AnchorProvider";
 import { useCluster } from "@/providers/ClusterProvider";
 import { MarketUI, MarketAccountData, marketToUI } from "@/types/market";
+import { logError } from "@/lib/errors";
 
 /**
  * Fetch all markets from the chain
@@ -15,8 +16,15 @@ export function useMarkets() {
   return useQuery<MarketUI[]>({
     queryKey: ["markets", cluster],
     queryFn: async () => {
-      // Fetch all Market accounts
-      const accounts = await program.account.market.all();
+      let accounts;
+      try {
+        accounts = await program.account.market.all();
+      } catch (err) {
+        logError("useMarkets", err);
+        throw new Error(
+          "Failed to load markets. The RPC endpoint may be unavailable."
+        );
+      }
 
       // Convert to UI format
       const markets = accounts.map((account) =>

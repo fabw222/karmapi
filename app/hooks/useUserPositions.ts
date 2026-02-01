@@ -14,6 +14,7 @@ import {
   marketToUI,
   UserPosition,
 } from "@/types/market";
+import { logError } from "@/lib/errors";
 
 interface PositionWithMarket extends UserPosition {
   market: MarketUI;
@@ -119,22 +120,19 @@ export function useUserPositions() {
               market,
             });
           } catch (error) {
-            console.error(
-              `Error fetching position for market ${market.address}:`,
-              error
-            );
+            logError("useUserPositions", error, { marketAddress: market.address });
           }
         }
 
         return positions;
       } catch (error) {
-        console.error("Error fetching user positions:", error);
+        logError("useUserPositions", error);
         return [];
       }
     },
     enabled: !!connection && !!publicKey,
-    staleTime: 10 * 1000,
-    refetchInterval: 30 * 1000,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
   });
 }
 
@@ -193,7 +191,7 @@ export function useUserPosition(marketAddress: string | null) {
           noValue: noPool > 0 ? (noBalance * yesPool) / noPool : 0,
         };
       } catch (error) {
-        console.error("Error fetching user position:", error);
+        logError("useUserPosition", error, { marketAddress: marketAddress ?? undefined });
         return null;
       }
     },

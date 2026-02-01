@@ -15,6 +15,8 @@ import { useAnchorProgram } from "@/providers/AnchorProvider";
 import { useCluster } from "@/providers/ClusterProvider";
 import { deriveVaultPDA } from "@/lib/pda";
 import { MarketAccountData } from "@/types/market";
+import { parseTransactionError, parseSimulationError, logError } from "@/lib/errors";
+import { invalidateMarketQueries } from "@/lib/query-helpers";
 
 interface RedeemParams {
   marketAddress: string;
@@ -121,6 +123,20 @@ export function useRedeem() {
           );
         }
 
+        // Simulate the complete transaction before sending
+        {
+          transaction.feePayer = publicKey;
+          const sim = await connection.simulateTransaction(transaction);
+          if (sim.value.err) {
+            throw new Error(
+              parseSimulationError(
+                new Error(JSON.stringify(sim.value.err)),
+                sim.value.logs
+              )
+            );
+          }
+        }
+
         // Send transaction
         const tx = await program.provider.sendAndConfirm!(transaction);
 
@@ -131,20 +147,15 @@ export function useRedeem() {
         const winningPool = market.outcome ? yesPool : noPool;
         const payout = winningPool > 0 ? (params.amount * totalPool) / winningPool : 0;
 
-        // Invalidate queries
-        await queryClient.invalidateQueries({ queryKey: ["market", cluster, params.marketAddress] });
-        await queryClient.invalidateQueries({ queryKey: ["userPosition", cluster, params.marketAddress] });
-        await queryClient.invalidateQueries({ queryKey: ["userPositions", cluster] });
-        await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
+        await invalidateMarketQueries(queryClient, cluster, params.marketAddress);
 
         return {
           signature: tx,
           payout,
         };
       } catch (err) {
-        console.error("Error redeeming:", err);
-        const errorMessage = err instanceof Error ? err.message : "Failed to redeem";
-        setError(errorMessage);
+        logError("useRedeem", err, { marketAddress: params.marketAddress });
+        setError(parseTransactionError(err));
         return null;
       } finally {
         setIsLoading(false);
@@ -166,30 +177,65 @@ export function useRedeem() {
   };
 }
 
+export interface RedeemAllResults {
+  succeeded: string[];
+  failed: { marketAddress: string; error: string }[];
+}
+
 /**
- * Hook to redeem all winning positions across markets
+ * Hook to redeem all winning positions across markets.
+ * Tracks per-position success/failure.
  */
 export function useRedeemAll() {
-  const { redeem, isLoading, error, reset } = useRedeem();
+  const { redeem, isLoading, error, reset: resetRedeem } = useRedeem();
   const [isRedeeming, setIsRedeeming] = useState(false);
+  const [results, setResults] = useState<RedeemAllResults | null>(null);
 
   const redeemAll = useCallback(
-    async (positions: { marketAddress: string; amount: number }[]): Promise<void> => {
+    async (positions: { marketAddress: string; amount: number }[]): Promise<RedeemAllResults> => {
       setIsRedeeming(true);
+      setResults(null);
+
+      const succeeded: string[] = [];
+      const failed: { marketAddress: string; error: string }[] = [];
 
       for (const position of positions) {
-        await redeem(position);
+        try {
+          const result = await redeem(position);
+          if (result) {
+            succeeded.push(position.marketAddress);
+          } else {
+            failed.push({
+              marketAddress: position.marketAddress,
+              error: "Redemption returned no result",
+            });
+          }
+        } catch (err) {
+          failed.push({
+            marketAddress: position.marketAddress,
+            error: parseTransactionError(err),
+          });
+        }
       }
 
+      const outcome = { succeeded, failed };
+      setResults(outcome);
       setIsRedeeming(false);
+      return outcome;
     },
     [redeem]
   );
+
+  const reset = useCallback(() => {
+    resetRedeem();
+    setResults(null);
+  }, [resetRedeem]);
 
   return {
     redeemAll,
     isLoading: isLoading || isRedeeming,
     error,
+    results,
     reset,
   };
 }

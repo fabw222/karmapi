@@ -18,7 +18,7 @@ export default function MarketPage() {
   const params = useParams();
   const marketId = params.id as string;
   const { publicKey } = useWallet();
-  const { data: market, isLoading, refetch } = useMarket(marketId);
+  const { data: market, isLoading, isError, error: marketError, refetch } = useMarket(marketId);
   const { data: userPosition } = useUserPosition(marketId);
   const { settleMarket, isLoading: isSettling, error: settleError } = useSettleMarket();
   const { redeem, isLoading: isRedeeming, error: redeemError } = useRedeem();
@@ -75,6 +75,37 @@ export default function MarketPage() {
               </div>
               <div className="h-96 bg-gray-800 rounded-xl"></div>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isError && !market) {
+    return (
+      <div className="min-h-screen bg-gray-900">
+        <Header />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center py-16">
+            <h1 className="text-2xl font-bold text-white mb-4">
+              Error Loading Market
+            </h1>
+            <p className="text-gray-400 mb-2">
+              Could not load market data. The RPC endpoint may be unavailable.
+            </p>
+            {marketError && (
+              <p className="text-red-400 text-sm mb-6 font-mono">
+                {marketError instanceof Error
+                  ? marketError.message.slice(0, 200)
+                  : String(marketError).slice(0, 200)}
+              </p>
+            )}
+            <button
+              onClick={() => refetch()}
+              className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg transition-colors"
+            >
+              Retry
+            </button>
           </div>
         </div>
       </div>
@@ -304,22 +335,40 @@ export default function MarketPage() {
                         {settleError}
                       </div>
                     )}
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => handleSettle(true)}
-                        disabled={isSettling}
-                        className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 rounded-lg font-semibold text-white transition-all disabled:cursor-not-allowed"
-                      >
-                        {isSettling ? "..." : "Settle YES"}
-                      </button>
-                      <button
-                        onClick={() => handleSettle(false)}
-                        disabled={isSettling}
-                        className="flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 rounded-lg font-semibold text-white transition-all disabled:cursor-not-allowed"
-                      >
-                        {isSettling ? "..." : "Settle NO"}
-                      </button>
-                    </div>
+                    {(() => {
+                      const yesPool = market.yesPool;
+                      const noPool = market.noPool;
+                      // Disable settling to a side with 0 bets when the other side has bets,
+                      // because winning_supply would be 0 and nobody could redeem.
+                      const canSettleYes = noPool === 0 || yesPool > 0;
+                      const canSettleNo = yesPool === 0 || noPool > 0;
+                      return (
+                        <>
+                          <div className="flex gap-3">
+                            <button
+                              onClick={() => handleSettle(true)}
+                              disabled={isSettling || !canSettleYes}
+                              className="flex-1 py-3 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 rounded-lg font-semibold text-white transition-all disabled:cursor-not-allowed"
+                            >
+                              {isSettling ? "..." : "Settle YES"}
+                            </button>
+                            <button
+                              onClick={() => handleSettle(false)}
+                              disabled={isSettling || !canSettleNo}
+                              className="flex-1 py-3 bg-red-600 hover:bg-red-700 disabled:bg-red-600/50 rounded-lg font-semibold text-white transition-all disabled:cursor-not-allowed"
+                            >
+                              {isSettling ? "..." : "Settle NO"}
+                            </button>
+                          </div>
+                          {(!canSettleYes || !canSettleNo) && (
+                            <p className="text-yellow-400 text-xs">
+                              {!canSettleYes && "Settling YES would lock all funds — no one bet on that side."}
+                              {!canSettleNo && "Settling NO would lock all funds — no one bet on that side."}
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

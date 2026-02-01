@@ -6,7 +6,7 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { Header } from "@/components/Header";
 import { useUserPositions } from "@/hooks/useUserPositions";
-import { useRedeem } from "@/hooks/useRedeem";
+import { useRedeem, useRedeemAll, RedeemAllResults } from "@/hooks/useRedeem";
 import { useTokenInfo, tokenDisplaySymbol } from "@/hooks/useTokenInfo";
 import { formatPoolAmount } from "@/types/market";
 
@@ -14,6 +14,13 @@ export default function PortfolioPage() {
   const { publicKey, connected } = useWallet();
   const { data: positionsData, isLoading, refetch } = useUserPositions();
   const { redeem, isLoading: isRedeeming } = useRedeem();
+  const {
+    redeemAll,
+    isLoading: isRedeemingAll,
+    results: redeemAllResults,
+    reset: resetRedeemAll,
+  } = useRedeemAll();
+  const anyRedeeming = isRedeeming || isRedeemingAll;
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("all");
 
   const positions = useMemo(() => {
@@ -41,20 +48,24 @@ export default function PortfolioPage() {
   }, [positions]);
 
   const handleClaimAll = async () => {
-    for (const pos of positions) {
-      if (pos.market.isResolved && pos.market.outcome !== null) {
-        const winningBalance = pos.market.outcome
-          ? pos.yesBalance
-          : pos.noBalance;
-        if (winningBalance > 0) {
-          await redeem({
-            marketAddress: pos.marketAddress,
-            amount: winningBalance,
-          });
-        }
-      }
+    resetRedeemAll();
+    const claimable = positions
+      .filter(
+        (pos) =>
+          pos.market.isResolved &&
+          pos.market.outcome !== null &&
+          ((pos.market.outcome && pos.yesBalance > 0) ||
+            (!pos.market.outcome && pos.noBalance > 0))
+      )
+      .map((pos) => ({
+        marketAddress: pos.marketAddress,
+        amount: pos.market.outcome ? pos.yesBalance : pos.noBalance,
+      }));
+
+    if (claimable.length > 0) {
+      await redeemAll(claimable);
+      refetch();
     }
-    refetch();
   };
 
   return (
@@ -98,8 +109,9 @@ export default function PortfolioPage() {
             <PortfolioStats
               positions={positions}
               hasClaimable={hasClaimable}
-              isRedeeming={isRedeeming}
+              isRedeeming={anyRedeeming}
               onClaimAll={handleClaimAll}
+              redeemAllResults={redeemAllResults}
             />
 
             {/* Filters */}
@@ -168,7 +180,7 @@ export default function PortfolioPage() {
                         <PositionRow
                           key={position.marketAddress}
                           position={position}
-                          isRedeeming={isRedeeming}
+                          isRedeeming={anyRedeeming}
                           onRedeem={(marketAddress, amount) =>
                             redeem({ marketAddress, amount })
                           }
@@ -223,6 +235,7 @@ function PortfolioStats({
   hasClaimable,
   isRedeeming,
   onClaimAll,
+  redeemAllResults,
 }: {
   positions: Array<{
     yesBalance: number;
@@ -238,6 +251,7 @@ function PortfolioStats({
   hasClaimable: boolean;
   isRedeeming: boolean;
   onClaimAll: () => void;
+  redeemAllResults: RedeemAllResults | null;
 }) {
   const statsByMint = useMemo(() => {
     const map = new Map<string, MintStats>();
@@ -331,6 +345,19 @@ function PortfolioStats({
           >
             {isRedeeming ? "Claiming..." : "Claim All"}
           </button>
+        )}
+        {redeemAllResults && (
+          <p className="mt-2 text-sm text-gray-400">
+            Claimed {redeemAllResults.succeeded.length}/
+            {redeemAllResults.succeeded.length + redeemAllResults.failed.length}{" "}
+            positions.
+            {redeemAllResults.failed.length > 0 && (
+              <span className="text-red-400">
+                {" "}
+                {redeemAllResults.failed.length} failed.
+              </span>
+            )}
+          </p>
         )}
       </div>
     </div>

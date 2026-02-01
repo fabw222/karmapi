@@ -4,6 +4,7 @@ import { PublicKey } from "@solana/web3.js";
 import { useAnchorProgram } from "@/providers/AnchorProvider";
 import { useCluster } from "@/providers/ClusterProvider";
 import { MarketUI, MarketAccountData, marketToUI } from "@/types/market";
+import { logError } from "@/lib/errors";
 
 /**
  * Fetch a single market by its public key
@@ -23,16 +24,24 @@ export function useMarket(marketAddress: string | null) {
       try {
         const pubkey = new PublicKey(marketAddress);
         const account = await program.account.market.fetch(pubkey);
-
         return marketToUI(pubkey, account as unknown as MarketAccountData);
       } catch (error) {
-        console.error("Error fetching market:", error);
-        return null;
+        const msg = error instanceof Error ? error.message : String(error);
+        if (
+          msg.includes("Account does not exist") ||
+          msg.includes("could not find account") ||
+          msg.includes("Invalid public key")
+        ) {
+          return null;
+        }
+        // Network / RPC errors should propagate so React Query shows isError
+        logError("useMarket", error, { marketAddress });
+        throw error;
       }
     },
     enabled: !!connection && !!marketAddress,
-    staleTime: 5 * 1000, // Shorter stale time for single market
-    refetchInterval: 10 * 1000,
+    staleTime: 15 * 1000,
+    refetchInterval: 30 * 1000,
   });
 }
 
@@ -65,12 +74,12 @@ export function useMultipleMarkets(marketAddresses: string[]) {
           })
           .filter((m): m is MarketUI => m !== null);
       } catch (error) {
-        console.error("Error fetching markets:", error);
+        logError("useMultipleMarkets", error, { marketAddresses });
         return [];
       }
     },
     enabled: !!connection && marketAddresses.length > 0,
-    staleTime: 5 * 1000,
-    refetchInterval: 10 * 1000,
+    staleTime: 15 * 1000,
+    refetchInterval: 30 * 1000,
   });
 }

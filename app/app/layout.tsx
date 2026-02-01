@@ -12,6 +12,7 @@ import {
   parseCluster,
   resolveEnvCluster,
 } from "@/lib/cluster";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -50,7 +51,9 @@ export default async function RootLayout({
         <QueryProvider>
           <ClusterProvider initialCluster={initialCluster}>
             <WalletProvider>
-              <AnchorContextProvider>{children}</AnchorContextProvider>
+              <AnchorContextProvider>
+                <ErrorBoundary>{children}</ErrorBoundary>
+              </AnchorContextProvider>
             </WalletProvider>
           </ClusterProvider>
         </QueryProvider>

@@ -66,7 +66,7 @@ export function useTokenBalance(
       };
     },
     enabled: !!mint && !!publicKey && !!connection,
-    staleTime: 10 * 1000, // 10 seconds
-    refetchInterval: 30 * 1000, // 30 seconds
+    staleTime: 15 * 1000,
+    refetchInterval: 60 * 1000,
   });
 }

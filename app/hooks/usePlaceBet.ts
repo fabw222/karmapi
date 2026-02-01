@@ -14,12 +14,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAnchorProgram } from "@/providers/AnchorProvider";
 import { useCluster } from "@/providers/ClusterProvider";
 import { deriveYesMintPDA, deriveNoMintPDA, deriveVaultPDA } from "@/lib/pda";
+import { parseTransactionError, parseSimulationError, logError } from "@/lib/errors";
+import { invalidateMarketQueries } from "@/lib/query-helpers";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 
-// Each ATA creation costs rent-exempt minimum (~0.00204 SOL)
-export const ATA_RENT = 2_039_280; // lamports
-export const TX_FEE = 10_000; // lamports, conservative for 1 sig
+// Static estimates for UI display (BetPanel). Actual validation uses dynamic rent below.
+export const ESTIMATED_ATA_RENT = 2_039_280; // lamports (~0.00204 SOL per ATA)
+export const ESTIMATED_TX_FEE = 10_000; // lamports, conservative for 1 sig
 
 interface PlaceBetParams {
   marketAddress: string;
@@ -150,8 +152,9 @@ export function usePlaceBet() {
             );
           }
 
-          // Validate SOL balance
-          const overhead = (newAtaCount * ATA_RENT) + TX_FEE;
+          // Validate SOL balance (use dynamic rent from RPC)
+          const ataRent = await connection.getMinimumBalanceForRentExemption(165);
+          const overhead = (newAtaCount * ataRent) + ESTIMATED_TX_FEE;
           const solBalance = await connection.getBalance(publicKey);
           if (solBalance < params.amount + overhead) {
             throw new Error(
@@ -220,18 +223,20 @@ export function usePlaceBet() {
 
         transaction.add(placeBetIx);
 
-        // Simulate transaction for better error reporting
-        if (IS_DEV) {
-          const { blockhash } = await connection.getLatestBlockhash();
-          transaction.recentBlockhash = blockhash;
+        // Simulate transaction for better error reporting (always run)
+        {
           transaction.feePayer = publicKey;
           const sim = await connection.simulateTransaction(transaction);
           if (sim.value.err) {
-            console.error("Simulation failed:", sim.value.err);
-            console.error("Simulation logs:", sim.value.logs);
-            const logStr = sim.value.logs?.join("\n") ?? "";
+            if (IS_DEV) {
+              console.error("Simulation failed:", sim.value.err);
+              console.error("Simulation logs:", sim.value.logs);
+            }
             throw new Error(
-              `Transaction simulation failed: ${JSON.stringify(sim.value.err)}${logStr ? `\nLogs:\n${logStr}` : ""}`
+              parseSimulationError(
+                new Error(JSON.stringify(sim.value.err)),
+                sim.value.logs
+              )
             );
           }
         }
@@ -245,33 +250,20 @@ export function usePlaceBet() {
           "confirmed"
         );
         if (confirmation.value.err) {
-          if (IS_DEV) {
-            console.error(
-              "Place bet transaction failed:",
-              confirmation.value.err
-            );
-          }
           throw new Error(
-            `Bet transaction failed: ${JSON.stringify(confirmation.value.err)}`
+            parseTransactionError(
+              new Error(JSON.stringify(confirmation.value.err))
+            )
           );
         }
 
-        // Invalidate queries
-        await queryClient.invalidateQueries({
-          queryKey: ["market", cluster, params.marketAddress],
-        });
-        await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
-        await queryClient.invalidateQueries({
-          queryKey: ["userPosition", cluster, params.marketAddress],
-        });
-        await queryClient.invalidateQueries({ queryKey: ["userPositions", cluster] });
+        // Invalidate queries (including token balance)
+        await invalidateMarketQueries(queryClient, cluster, params.marketAddress);
 
         return { signature };
       } catch (err) {
-        if (IS_DEV) console.error("Error placing bet:", err);
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to place bet";
-        setError(errorMessage);
+        logError("usePlaceBet", err, { marketAddress: params.marketAddress });
+        setError(parseTransactionError(err));
         return null;
       } finally {
         setIsLoading(false);

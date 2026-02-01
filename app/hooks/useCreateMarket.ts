@@ -13,12 +13,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAnchorProgram } from "@/providers/AnchorProvider";
 import { useCluster } from "@/providers/ClusterProvider";
 import { deriveAllMarketPDAs } from "@/lib/pda";
+import { parseTransactionError, logError } from "@/lib/errors";
+import { invalidateMarketQueries } from "@/lib/query-helpers";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const MAX_PDA_COLLISION_RETRIES = 5;
 
-// Must match 8 + Market::INIT_SPACE from programs/market-factory/src/state/mod.rs
-const MARKET_ACCOUNT_SIZE = 844;
+// Fallback if program.account.market.size is unavailable
+const MARKET_ACCOUNT_SIZE_FALLBACK = 844;
 
 interface CreateMarketParams {
   title: string;
@@ -87,10 +89,14 @@ export function useCreateMarket() {
           );
         }
 
+        const marketAccountSize =
+          (program.account.market as unknown as { size?: number })?.size ??
+          MARKET_ACCOUNT_SIZE_FALLBACK;
+
         const [marketRent, mintRent, tokenAccountRent, creatorBalance] =
           await Promise.all([
             connection.getMinimumBalanceForRentExemption(
-              MARKET_ACCOUNT_SIZE,
+              marketAccountSize,
               "confirmed"
             ),
             connection.getMinimumBalanceForRentExemption(
@@ -214,8 +220,7 @@ export function useCreateMarket() {
         // Build and send the transaction
         const signature = await method.rpc();
 
-        // Invalidate markets query to refresh list
-        await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
+        await invalidateMarketQueries(queryClient, cluster);
 
         return {
           marketAddress: pdas.market.toBase58(),
@@ -251,7 +256,7 @@ export function useCreateMarket() {
               "processed"
             );
             if (accountInfo) {
-              await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
+              await invalidateMarketQueries(queryClient, cluster);
               return { marketAddress: marketPda.toBase58(), signature };
             }
             await new Promise((resolve) => setTimeout(resolve, 400));
@@ -263,16 +268,14 @@ export function useCreateMarket() {
             ]);
             const status = statusResp.value[0];
             if (status && status.err == null) {
-              await queryClient.invalidateQueries({ queryKey: ["markets", cluster] });
+              await invalidateMarketQueries(queryClient, cluster);
               return { marketAddress: marketPda.toBase58(), signature };
             }
           }
         }
 
-        if (IS_DEV) console.error("Error creating market:", err);
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to create market";
-        setError(errorMessage);
+        logError("useCreateMarket", err);
+        setError(parseTransactionError(err));
         return null;
       } finally {
         setIsLoading(false);

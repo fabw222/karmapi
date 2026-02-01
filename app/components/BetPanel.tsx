@@ -3,7 +3,7 @@
 import { FC, useState, useCallback } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
-import { usePlaceBet, ATA_RENT, TX_FEE } from "@/hooks/usePlaceBet";
+import { usePlaceBet, ESTIMATED_ATA_RENT, ESTIMATED_TX_FEE } from "@/hooks/usePlaceBet";
 import { NATIVE_MINT } from "@solana/spl-token";
 import { useTokenInfo, tokenDisplaySymbol } from "@/hooks/useTokenInfo";
 import { useTokenBalance } from "@/hooks/useTokenBalance";
@@ -38,7 +38,7 @@ export const BetPanel: FC<BetPanelProps> = ({
 
   const isNativeSol = betTokenMint === NATIVE_MINT.toBase58();
   // Worst-case reserve: 3 ATAs (YES, NO, WSOL) + tx fee
-  const solReserveUi = (3 * ATA_RENT + TX_FEE) / Math.pow(10, decimals);
+  const solReserveUi = (3 * ESTIMATED_ATA_RENT + ESTIMATED_TX_FEE) / Math.pow(10, decimals);
   const maxBetUi = walletBalance
     ? isNativeSol
       ? Math.max(0, walletBalance.uiBalance - solReserveUi)
